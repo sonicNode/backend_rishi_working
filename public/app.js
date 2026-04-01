@@ -37,9 +37,9 @@ const DEFAULT_BANT = {
 };
 const REALTIME_CONFIG = {
   recorderTimesliceMs: 120,
-  silenceMs: 320,
-  recognitionSilenceMs: 180,
-  minSpeechMs: 220,
+  silenceMs: 680,
+  recognitionSilenceMs: 520,
+  minSpeechMs: 260,
   vadThreshold: 0.045,
   bargeInThreshold: 0.075,
   bargeInMinSpeechMs: 240,
@@ -622,10 +622,6 @@ function handleRecognitionResult(event) {
     clearSpeechFinalizationTimer();
     return;
   }
-
-  if (finalSegments.length > 0) {
-    scheduleSpeechFinalization("recognition-final");
-  }
 }
 
 function handleRecognitionEnd() {
@@ -633,10 +629,6 @@ function handleRecognitionEnd() {
 
   if (!callModeEnabled || !isListening || isFinalizingTurn) {
     return;
-  }
-
-  if (activeTurn?.partialTranscript?.trim() && activeTurn.hasSpoken) {
-    scheduleSpeechFinalization("recognition-end");
   }
 
   window.setTimeout(() => {
@@ -727,12 +719,11 @@ function startVoiceActivityMonitor() {
       now - activeTurn.lastSpeechAt >= REALTIME_CONFIG.silenceMs &&
       level <= silenceThreshold;
 
-    const transcriptWentQuiet =
-      activeTurn.hasSpoken &&
-      activeTurn.lastTranscriptAt &&
+    const transcriptSettled =
+      !activeTurn.lastTranscriptAt ||
       now - activeTurn.lastTranscriptAt >= REALTIME_CONFIG.recognitionSilenceMs;
 
-    if (voiceWentQuiet || transcriptWentQuiet) {
+    if (voiceWentQuiet && transcriptSettled) {
       void finishListeningTurn("silence");
       return;
     }
