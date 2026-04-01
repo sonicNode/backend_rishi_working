@@ -1,6 +1,7 @@
 const startButton = document.querySelector("#startButton");
 const stopButton = document.querySelector("#stopButton");
 const statusBadge = document.querySelector("#statusBadge");
+const statusBadgeVisible = document.querySelector("#statusBadgeVisible");
 const messageList = document.querySelector("#messageList");
 const leadProfileView = document.querySelector("#leadProfile");
 const qualificationView = document.querySelector("#qualification");
@@ -1863,6 +1864,11 @@ function scrollConversationToLatest(target) {
 function resetStatus(label, variant) {
   statusBadge.textContent = label;
   statusBadge.className = `status-badge ${variant}`;
+
+  if (statusBadgeVisible) {
+    statusBadgeVisible.textContent = label;
+    statusBadgeVisible.className = `status-badge visible-status ${variant}`;
+  }
 
   if (voiceStage) {
     voiceStage.dataset.state = variant || "idle";

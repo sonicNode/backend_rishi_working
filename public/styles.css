@@ -176,16 +176,16 @@ body::after {
   bottom: 16px;
   z-index: 20;
   transform: translateX(-50%);
-  width: min(420px, calc(100% - 24px));
-  padding: 14px 16px 16px;
+  width: min(280px, calc(100% - 24px));
+  padding: 14px 14px 16px;
   display: grid;
   grid-template-columns: 1fr;
-  gap: 12px;
+  gap: 10px;
   justify-items: center;
   align-items: center;
   background: rgba(255, 255, 255, 0.9);
   border: 1px solid var(--border-strong);
-  border-radius: 30px;
+  border-radius: 28px;
   box-shadow: var(--shadow-lg);
   backdrop-filter: blur(24px);
 }
@@ -294,6 +294,11 @@ button {
   width: 100%;
 }
 
+.visible-status {
+  padding: 7px 12px;
+  font-size: 0.8rem;
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -313,13 +318,13 @@ button {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 8px;
   width: 100%;
   min-width: 0;
 }
 
 .voice-stage {
-  width: min(240px, 100%);
+  width: min(220px, 100%);
   display: block;
   padding: 0;
   border-radius: 0;
@@ -740,7 +745,7 @@ body:has(.status-badge.recording) .primary {
   }
 
   .controls-panel {
-    width: min(420px, calc(100% - 20px));
+    width: min(280px, calc(100% - 20px));
   }
 }
 
@@ -766,10 +771,10 @@ body:has(.status-badge.recording) .primary {
 
   .controls-panel {
     bottom: 10px;
-    width: min(360px, calc(100% - 16px));
-    padding: 12px 14px 14px;
+    width: min(250px, calc(100% - 16px));
+    padding: 12px 12px 14px;
     grid-template-columns: 1fr;
-    gap: 10px;
+    gap: 8px;
     border-radius: 24px;
   }
 

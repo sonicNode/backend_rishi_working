@@ -18,12 +18,12 @@
       </section>
 
       <section class="panel controls-panel">
-        <div class="panel-header">
-          <h2>Talk to Lead Sathi</h2>
-          <span id="statusBadge" class="status-badge idle">Idle</span>
-        </div>
-
         <div class="config-store hidden" aria-hidden="true">
+          <div class="panel-header">
+            <h2>Talk to Lead Sathi</h2>
+            <span id="statusBadge" class="status-badge idle">Idle</span>
+          </div>
+
           <label class="field">
             <span>Session ID</span>
             <input id="sessionId" type="text" placeholder="lead-demo-session" />
@@ -58,6 +58,7 @@
         <div class="actions">
           <div class="mic-container">
             <button id="startButton" class="primary">Start Call</button>
+            <span id="statusBadgeVisible" class="status-badge visible-status idle">Idle</span>
             <div id="voiceStage" class="voice-stage" data-state="idle" aria-hidden="true">
               <div class="waveform-frame">
                 <canvas id="waveformCanvas" class="waveform-canvas"></canvas>
