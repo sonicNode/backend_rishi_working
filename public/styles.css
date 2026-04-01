@@ -235,6 +235,13 @@ body::after {
   border-color: rgba(245, 158, 11, 0.14);
 }
 
+.status-badge.connecting,
+.status-badge.speaking {
+  color: var(--primary);
+  background: rgba(79, 70, 229, 0.1);
+  border-color: rgba(79, 70, 229, 0.14);
+}
+
 .status-badge.ready {
   color: var(--success);
   background: rgba(15, 159, 110, 0.12);
@@ -422,6 +429,12 @@ body:has(.status-badge.recording) .primary {
   border-style: dashed;
 }
 
+.message-card.is-live {
+  border-style: dashed;
+  border-color: rgba(79, 70, 229, 0.22);
+  background: rgba(238, 242, 255, 0.72);
+}
+
 .message-role {
   display: inline-flex;
   align-items: center;
@@ -434,6 +447,10 @@ body:has(.status-badge.recording) .primary {
 }
 
 .role-you .message-role {
+  color: var(--primary);
+}
+
+.message-card.is-live .message-role {
   color: var(--primary);
 }
 
