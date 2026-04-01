@@ -26,8 +26,9 @@ app.get("/health", (req, res) => {
     message: "Voice assistant backend is running",
     env: {
       NODE_ENV: process.env.NODE_ENV || "(not set)",
-      SARVAM_API_KEY: process.env.SARVAM_API_KEY ? "✅ set" : "❌ MISSING",
-      PORT: process.env.PORT || "(not set — using default 3000)"
+      SARVAM_API_KEY: process.env.SARVAM_API_KEY ? "set" : "missing",
+      OPENAI_API_KEY: process.env.OPENAI_API_KEY ? "set" : "missing",
+      PORT: process.env.PORT || "(not set - using default 3000)"
     }
   });
 });

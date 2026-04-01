@@ -1,14 +1,15 @@
 import { env } from "../config/env.js";
 import { createHttpError } from "../utils/http-error.js";
 import {
-  buildSpokenReply,
   buildLeadSystemPrompt,
   buildLeadThinking,
+  buildSpokenReply,
   extractFollowUpQuestion,
   extractLeadDetails,
   mergeAndQualify,
   normalizeAssistantReply
 } from "./lead-agent.service.js";
+import { generateLeadIntelligence } from "./openai.service.js";
 import { generateLeadReply, synthesizeSpeech, transcribeAudio } from "./sarvam.service.js";
 import { getSession, updateSession } from "./session-store.js";
 
@@ -48,54 +49,62 @@ export async function processVoiceTurn({
 
   const session = getSession(resolvedSessionId);
   const transcriptText = transcription.transcript || normalizedFallbackTranscript || "";
-  const extractedDetails = extractLeadDetails(transcriptText, session.leadProfile);
-  const { leadProfile, qualification } = mergeAndQualify(session.leadProfile, extractedDetails);
   const detectedLanguageCode = transcription.language_code || requestedLanguageCode || env.defaultLanguageCode;
+  const extractedDetails = extractLeadDetails(transcriptText, session.leadProfile);
+  const localTurnState = mergeAndQualify(session.leadProfile, extractedDetails);
 
-  const conversationMessages = [
-    {
-      role: "system",
-      content: buildLeadSystemPrompt({
-        languageCode: detectedLanguageCode,
-        leadProfile,
-        qualification
-      })
-    },
-    ...session.transcript.flatMap((entry) => [
-      { role: "user", content: entry.user },
-      { role: "assistant", content: entry.assistant }
-    ]),
-    {
-      role: "user",
-      content: transcriptText
-    }
-  ];
+  let leadProfile = localTurnState.leadProfile;
+  let qualification = localTurnState.qualification;
+  let finalAnswer = "";
+  let thinking = "";
+  let nextQuestion = qualification.nextQuestion;
 
-  const assistantReply = await generateLeadReply({
-    messages: conversationMessages
+  const openAiTurnState = await maybeApplyOpenAiIntelligence({
+    transcriptText,
+    languageCode: detectedLanguageCode,
+    session,
+    leadProfile,
+    qualification
   });
 
-  let finalAnswer = normalizeAssistantReply(assistantReply.text);
-  const nextQuestion = extractFollowUpQuestion(finalAnswer) || qualification.nextQuestion;
+  if (openAiTurnState) {
+    leadProfile = openAiTurnState.leadProfile;
+    qualification = openAiTurnState.qualification;
+    finalAnswer = openAiTurnState.finalAnswer;
+    thinking = openAiTurnState.thinking;
+    nextQuestion = openAiTurnState.nextQuestion;
+  } else {
+    const assistantReply = await generateLeadReply({
+      messages: buildConversationMessages({
+        transcriptText,
+        languageCode: detectedLanguageCode,
+        leadProfile,
+        qualification,
+        transcriptHistory: session.transcript
+      })
+    });
 
-  if (nextQuestion && !finalAnswer.includes(nextQuestion)) {
-    finalAnswer = `${finalAnswer} ${nextQuestion}`.trim();
+    finalAnswer = normalizeAssistantReply(assistantReply.text);
+    nextQuestion = extractFollowUpQuestion(finalAnswer) || qualification.nextQuestion;
+    thinking = buildLeadThinking({
+      leadProfile,
+      qualification: {
+        ...qualification,
+        nextQuestion
+      }
+    });
   }
 
   const responseQualification = {
     ...qualification,
     nextQuestion
   };
-  const thinking = buildLeadThinking({
-    leadProfile,
-    qualification: responseQualification
-  });
-
   const speech = await synthesizeSpeech({
     text: buildSpokenReply(finalAnswer, nextQuestion),
     languageCode: detectedLanguageCode,
     speaker: resolvedSpeaker
   });
+  const assistantTranscriptEntry = buildAssistantTranscriptEntry(finalAnswer, nextQuestion);
 
   const updatedSession = updateSession(resolvedSessionId, (current) => ({
     ...current,
@@ -105,7 +114,7 @@ export async function processVoiceTurn({
       ...current.transcript,
       {
         user: transcriptText,
-        assistant: finalAnswer,
+        assistant: assistantTranscriptEntry,
         languageCode: detectedLanguageCode,
         createdAt: new Date().toISOString()
       }
@@ -133,3 +142,227 @@ export async function processVoiceTurn({
     }
   };
 }
+
+async function maybeApplyOpenAiIntelligence({
+  transcriptText,
+  languageCode,
+  session,
+  leadProfile,
+  qualification
+}) {
+  try {
+    const openAiResponse = await generateLeadIntelligence({
+      transcriptText,
+      languageCode,
+      leadProfile,
+      qualification,
+      transcriptHistory: session.transcript
+    });
+
+    if (!openAiResponse?.final_answer) {
+      return null;
+    }
+
+    const openAiDerivedDetails = buildLeadDetailsFromOpenAi({
+      leadProfile,
+      bant: openAiResponse.bant
+    });
+    const mergedTurnState = mergeAndQualify(leadProfile, openAiDerivedDetails);
+    const nextQuestion = normalizeQuestion(openAiResponse.next_question) || mergedTurnState.qualification.nextQuestion;
+    const responseQualification = buildResponseQualification({
+      qualification: mergedTurnState.qualification,
+      preferredScore: openAiResponse.score,
+      preferredLabel: openAiResponse.label,
+      nextQuestion
+    });
+
+    return {
+      leadProfile: mergedTurnState.leadProfile,
+      qualification: responseQualification,
+      finalAnswer: normalizeAssistantReply(openAiResponse.final_answer),
+      thinking:
+        normalizeThinking(openAiResponse.thinking) ||
+        buildLeadThinking({
+          leadProfile: mergedTurnState.leadProfile,
+          qualification: responseQualification
+        }),
+      nextQuestion
+    };
+  } catch (error) {
+    console.warn("[voice-turn] OpenAI intelligence failed. Falling back to Sarvam chat.", error);
+    return null;
+  }
+}
+
+function buildConversationMessages({
+  transcriptText,
+  languageCode,
+  leadProfile,
+  qualification,
+  transcriptHistory
+}) {
+  return [
+    {
+      role: "system",
+      content: buildLeadSystemPrompt({
+        languageCode,
+        leadProfile,
+        qualification
+      })
+    },
+    ...(transcriptHistory || []).flatMap((entry) => [
+      { role: "user", content: entry.user },
+      { role: "assistant", content: entry.assistant }
+    ]),
+    {
+      role: "user",
+      content: transcriptText
+    }
+  ];
+}
+
+function buildLeadDetailsFromOpenAi({ leadProfile, bant }) {
+  if (!bant) {
+    return {};
+  }
+
+  return {
+    budget: bant.budget || null,
+    timeline: normalizeTimeline(bant.timeline),
+    authority: bant.authority ? "decision-maker" : null,
+    useCase: bant.need ? leadProfile.useCase || "Requirement shared" : null
+  };
+}
+
+function buildResponseQualification({ qualification, preferredScore, preferredLabel, nextQuestion }) {
+  const scoreOutOf10 = Number.isFinite(preferredScore) ? clampScore(preferredScore) : qualification.scoreOutOf10;
+  const labelKey = normalizeLabelKey(preferredLabel, scoreOutOf10);
+
+  return {
+    ...qualification,
+    scoreOutOf10,
+    labelKey,
+    label: getDisplayLabel(labelKey),
+    nextQuestion,
+    summary: buildQualificationSummary(qualification.bant, labelKey)
+  };
+}
+
+function buildAssistantTranscriptEntry(finalAnswer, nextQuestion) {
+  const combined = buildSpokenReply(finalAnswer, nextQuestion);
+  return combined || finalAnswer;
+}
+
+function normalizeThinking(value) {
+  const normalized = (value || "").replace(/\s+/g, " ").trim();
+  return normalized || null;
+}
+
+function normalizeQuestion(value) {
+  const normalized = (value || "").replace(/\s+/g, " ").trim();
+  return normalized || null;
+}
+
+function normalizeTimeline(value) {
+  if (!value) {
+    return null;
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+
+  if (!normalized) {
+    return null;
+  }
+
+  if (normalized.includes("urgent") || normalized.includes("asap") || normalized.includes("immediate")) {
+    return "urgent";
+  }
+
+  if (normalized.includes("flexible")) {
+    return "flexible";
+  }
+
+  return normalized;
+}
+
+function normalizeLabelKey(label, score) {
+  const normalizedLabel = (label || "").toLowerCase();
+
+  if (normalizedLabel.includes("hot")) {
+    return "hot";
+  }
+
+  if (normalizedLabel.includes("warm")) {
+    return "warm";
+  }
+
+  if (normalizedLabel.includes("cold")) {
+    return "cold";
+  }
+
+  if (score >= 8) {
+    return "hot";
+  }
+
+  if (score >= 5) {
+    return "warm";
+  }
+
+  return "cold";
+}
+
+function getDisplayLabel(labelKey) {
+  if (labelKey === "hot") {
+    return "Hot \u{1F525}";
+  }
+
+  if (labelKey === "warm") {
+    return "Warm \u{1F642}";
+  }
+
+  return "Cold \u2744\uFE0F";
+}
+
+function buildQualificationSummary(bant, labelKey) {
+  const missingFields = BANT_FIELDS.filter((field) => !bant[field]).map((field) => getReadableFieldName(field));
+
+  if (labelKey === "hot") {
+    return "Strong lead with clear need, budget, and decision access.";
+  }
+
+  if (labelKey === "warm") {
+    if (missingFields.length === 1) {
+      return `Decent lead, needs clarity on ${missingFields[0]}.`;
+    }
+
+    return `Promising lead, but we still need ${joinList(missingFields)}.`;
+  }
+
+  if (!bant.need) {
+    return "Early lead, still understanding the requirement.";
+  }
+
+  return `Early-stage lead. We still need ${joinList(missingFields)}.`;
+}
+
+function joinList(items) {
+  if (!items.length) {
+    return "a few more details";
+  }
+
+  if (items.length === 1) {
+    return items[0];
+  }
+
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+
+function getReadableFieldName(field) {
+  return field === "need" ? "the need" : field;
+}
+
+function clampScore(score) {
+  return Math.max(0, Math.min(10, Math.round(score)));
+}
+
+const BANT_FIELDS = ["need", "budget", "authority", "timeline"];
