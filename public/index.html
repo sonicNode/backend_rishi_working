@@ -52,15 +52,15 @@
         </div>
 
         <div class="actions">
-          <button id="startButton" class="primary">Start Call</button>
-          <button id="stopButton" class="secondary" disabled>Stop & Send</button>
-        </div>
-
-        <div id="voiceStage" class="voice-stage" data-state="idle" aria-hidden="true">
-          <div class="waveform-frame">
-            <canvas id="waveformCanvas" class="waveform-canvas"></canvas>
+          <div class="mic-container">
+            <button id="startButton" class="primary">Start Call</button>
+            <div id="voiceStage" class="voice-stage" data-state="idle" aria-hidden="true">
+              <div class="waveform-frame">
+                <canvas id="waveformCanvas" class="waveform-canvas"></canvas>
+              </div>
+            </div>
           </div>
-          <p class="waveform-note">Real-time voice activity appears here while Lead Sathi listens.</p>
+          <button id="stopButton" class="secondary" disabled>Stop & Send</button>
         </div>
 
         <audio id="userPlayback" class="audio-player hidden"></audio>
