@@ -36,14 +36,15 @@ const DEFAULT_BANT = {
   timeline: null
 };
 const REALTIME_CONFIG = {
-  recorderTimesliceMs: 180,
-  silenceMs: 620,
-  minSpeechMs: 300,
+  recorderTimesliceMs: 120,
+  silenceMs: 320,
+  recognitionSilenceMs: 180,
+  minSpeechMs: 220,
   vadThreshold: 0.045,
   bargeInThreshold: 0.075,
   bargeInMinSpeechMs: 240,
-  partialDebounceMs: 60,
-  autoListenDelayMs: 40,
+  partialDebounceMs: 40,
+  autoListenDelayMs: 20,
   noiseFloorMargin: 0.035,
   waveformBars: 20,
   websocketTimeoutMs: 1800
@@ -81,6 +82,7 @@ let committedUserTurnText = "";
 let waveformFrameId = 0;
 let waveformPeaks = [];
 let audioMetrics = createAudioMetrics();
+let speechFinalizationTimer = 0;
 
 sessionIdInput.value = `lead-session-${Date.now()}`;
 startButton.setAttribute("aria-label", "Start live call");
@@ -148,6 +150,7 @@ async function startListeningTurn() {
   }
 
   window.clearTimeout(autoListenTimer);
+  clearSpeechFinalizationTimer();
   stopBargeInMonitor();
   await ensureRealtimeReady();
 
@@ -197,6 +200,7 @@ function stopLiveConversation() {
   callModeEnabled = false;
   pendingAutoStartAfterSpeech = false;
   window.clearTimeout(autoListenTimer);
+  clearSpeechFinalizationTimer();
   stopBargeInMonitor();
   sendRealtimeMessage({ type: "listen_abort" });
 
@@ -481,6 +485,7 @@ async function finishListeningTurn(reason) {
   }
 
   isFinalizingTurn = true;
+  clearSpeechFinalizationTimer();
   isListening = false;
   isProcessing = true;
   activeTurn.shouldProcess = true;
@@ -603,6 +608,15 @@ function handleRecognitionResult(event) {
   publishPartialTranscript(combinedTranscript, {
     final: interimSegments.length === 0
   });
+
+  if (interimSegments.length > 0) {
+    clearSpeechFinalizationTimer();
+    return;
+  }
+
+  if (finalSegments.length > 0 && activeTurn.hasSpoken && getCurrentAudioLevel() <= getDynamicSpeechThreshold()) {
+    scheduleSpeechFinalization("recognition-final");
+  }
 }
 
 function handleRecognitionEnd() {
@@ -1466,6 +1480,7 @@ function publishPartialTranscript(transcript, { final = false, force = false } =
 
 function handleTurnError(message) {
   console.error(message);
+  clearSpeechFinalizationTimer();
   isProcessing = false;
   isFinalizingTurn = false;
   callModeEnabled = false;
@@ -1512,6 +1527,7 @@ function isRealtimeSocketOpen() {
 
 function releaseVoicePipeline() {
   shouldReleasePipeline = false;
+  clearSpeechFinalizationTimer();
   stopVoiceActivityMonitor();
   stopBargeInMonitor();
   stopSpeechRecognition();
@@ -1535,6 +1551,7 @@ function releaseVoicePipeline() {
 
 function teardownRealtimeExperience() {
   window.clearTimeout(autoListenTimer);
+  clearSpeechFinalizationTimer();
   stopVoiceActivityMonitor();
   stopBargeInMonitor();
   stopSpeechRecognition();
@@ -1784,6 +1801,29 @@ function createTurnState(mimeType) {
     lastSpeechAt: 0,
     hasSpoken: false
   };
+}
+
+function scheduleSpeechFinalization(reason) {
+  clearSpeechFinalizationTimer();
+
+  speechFinalizationTimer = window.setTimeout(() => {
+    speechFinalizationTimer = 0;
+
+    if (!activeTurn || !isListening || isFinalizingTurn) {
+      return;
+    }
+
+    void finishListeningTurn(reason);
+  }, REALTIME_CONFIG.recognitionSilenceMs);
+}
+
+function clearSpeechFinalizationTimer() {
+  if (!speechFinalizationTimer) {
+    return;
+  }
+
+  window.clearTimeout(speechFinalizationTimer);
+  speechFinalizationTimer = 0;
 }
 
 function getAudioLevel(buffer) {
