@@ -609,13 +609,18 @@ function handleRecognitionResult(event) {
   }
 
   const now = Date.now();
+  const previousTranscript = activeTurn.partialTranscript;
+  const transcriptChanged = combinedTranscript !== previousTranscript;
   activeTurn.partialTranscript = combinedTranscript;
-  activeTurn.lastTranscriptAt = now;
-  activeTurn.lastSpeechAt = now;
-  activeTurn.hasSpoken = true;
 
-  if (!activeTurn.voiceStartedAt) {
-    activeTurn.voiceStartedAt = now - REALTIME_CONFIG.minSpeechMs;
+  if (transcriptChanged) {
+    activeTurn.lastTranscriptAt = now;
+    activeTurn.lastSpeechAt = now;
+    activeTurn.hasSpoken = true;
+
+    if (!activeTurn.voiceStartedAt) {
+      activeTurn.voiceStartedAt = now - REALTIME_CONFIG.minSpeechMs;
+    }
   }
 
   publishPartialTranscript(combinedTranscript, {
@@ -623,8 +628,14 @@ function handleRecognitionResult(event) {
   });
 
   if (interimSegments.length > 0) {
-    clearSpeechFinalizationTimer();
+    if (transcriptChanged) {
+      clearSpeechFinalizationTimer();
+    }
     return;
+  }
+
+  if (finalSegments.length > 0 && transcriptChanged) {
+    scheduleSpeechFinalization("recognition-final");
   }
 }
 
@@ -711,7 +722,6 @@ function startVoiceActivityMonitor() {
       }
 
       activeTurn.lastSpeechAt = now;
-      clearSpeechFinalizationTimer();
 
       if (now - activeTurn.voiceStartedAt >= REALTIME_CONFIG.minSpeechMs) {
         activeTurn.hasSpoken = true;
@@ -1867,6 +1877,12 @@ function scheduleSpeechFinalization(reason) {
     speechFinalizationTimer = 0;
 
     if (!activeTurn || !isListening || isFinalizingTurn) {
+      return;
+    }
+
+    const lastActivityAt = Math.max(activeTurn.lastSpeechAt || 0, activeTurn.lastTranscriptAt || 0);
+
+    if (lastActivityAt && Date.now() - lastActivityAt < REALTIME_CONFIG.recognitionSilenceMs) {
       return;
     }
 
