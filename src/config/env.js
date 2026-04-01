@@ -1,6 +1,19 @@
 import dotenv from "dotenv";
 
-dotenv.config();
+// ---------------------------------------------------------------------------
+// Environment loading strategy
+// ---------------------------------------------------------------------------
+// On Vercel (and any other cloud platform), environment variables are injected
+// directly into process.env by the platform — no .env file is involved.
+// We only load the local .env file when running in development so that secrets
+// never need to be committed to the repository.
+// ---------------------------------------------------------------------------
+if (process.env.NODE_ENV !== "production") {
+  dotenv.config();
+  console.log("[env] Loaded variables from local .env file (development mode)");
+} else {
+  console.log("[env] Running in production — using platform-injected environment variables");
+}
 
 export const env = {
   nodeEnv: process.env.NODE_ENV || "development",
@@ -19,7 +32,19 @@ export const env = {
 
 export function assertRequiredEnv() {
   if (!env.sarvamApiKey) {
-    // Keep startup friendly for scaffolding; real calls will fail with a clear message.
-    console.warn("SARVAM_API_KEY is not set. Voice API routes will not work until you add it.");
+    if (env.nodeEnv === "production") {
+      // In production (Vercel), this is a hard failure — the key must be set
+      // in Vercel's Environment Variables dashboard.
+      throw new Error(
+        "SARVAM_API_KEY is not set. " +
+        "Add it in the Vercel dashboard under Settings → Environment Variables."
+      );
+    } else {
+      // In local development, just warn so the dev server still starts.
+      console.warn(
+        "[env] WARNING: SARVAM_API_KEY is not set. " +
+        "Voice API routes will not work until you add it to your .env file."
+      );
+    }
   }
 }
