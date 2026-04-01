@@ -79,6 +79,7 @@ let isFinalizingTurn = false;
 let lastPartialSent = "";
 let lastPartialSentAt = 0;
 let committedUserTurnText = "";
+let conversationCompleted = false;
 let waveformFrameId = 0;
 let waveformPeaks = [];
 let audioMetrics = createAudioMetrics();
@@ -125,6 +126,7 @@ async function beginLiveConversation({ autoAttempt }) {
   }
 
   try {
+    conversationCompleted = false;
     callModeEnabled = true;
     resetStatus("Connecting...", "connecting");
     updateActionButtons();
@@ -197,6 +199,7 @@ async function handleStopAction() {
 }
 
 function stopLiveConversation() {
+  conversationCompleted = false;
   callModeEnabled = false;
   pendingAutoStartAfterSpeech = false;
   window.clearTimeout(autoListenTimer);
@@ -817,6 +820,7 @@ function interruptAssistantPlayback() {
 function renderRoundtrip(data, options = {}) {
   const finalAnswer = data.final_answer || data.assistantText || "";
   const thinking = data.thinking || "";
+  const conversationComplete = Boolean(data.conversation_complete);
   const serverScore = Number.isFinite(data.score) ? data.score : data.qualification?.scoreOutOf10 || 0;
   const serverBant = data.bant || data.qualification?.bant || {};
 
@@ -825,11 +829,23 @@ function renderRoundtrip(data, options = {}) {
 
   const score = Math.max(serverScore, calculateScore(bantState));
   const label = score > serverScore ? getLabel(score) : data.label || data.qualification?.label || getLabel(score);
-  const nextQuestion = data.next_question || data.qualification?.nextQuestion || getNextQuestion(bantState);
-  const summary =
-    score > serverScore
+  const nextQuestion = conversationComplete
+    ? null
+    : data.next_question || data.qualification?.nextQuestion || getNextQuestion(bantState);
+  const summary = conversationComplete
+    ? data.summary || data.qualification?.summary || "Lead qualification complete."
+    : score > serverScore
       ? buildLeadSummary(bantState, score)
       : data.summary || data.qualification?.summary || "We'll keep updating the lead score as details come in.";
+
+  conversationCompleted = conversationComplete;
+
+  if (conversationComplete) {
+    pendingAutoStartAfterSpeech = false;
+    window.clearTimeout(autoListenTimer);
+    callModeEnabled = false;
+    updateActionButtons();
+  }
 
   finalizeLiveUserMessage(data.userTranscript);
   appendMessage("assistant", finalAnswer, { thinking });
@@ -837,7 +853,8 @@ function renderRoundtrip(data, options = {}) {
     score,
     label,
     summary,
-    nextQuestion
+    nextQuestion,
+    conversationComplete
   });
   renderBantBoard();
 
@@ -849,7 +866,8 @@ function renderRoundtrip(data, options = {}) {
       scoreOutOf10: score,
       label,
       summary,
-      nextQuestion
+      nextQuestion,
+      conversationComplete
     },
     null,
     2
@@ -868,8 +886,11 @@ function renderRoundtrip(data, options = {}) {
         autoplay: options.autoplayAssistant !== false
       }
     );
-  } else if (callModeEnabled) {
+  } else if (callModeEnabled && !conversationComplete) {
     scheduleNextListeningTurn();
+  } else if (conversationComplete) {
+    resetStatus("Conversation complete", "idle");
+    updateActionButtons();
   }
 }
 
@@ -965,14 +986,16 @@ function removeLiveUserMessage() {
   liveUserMessage = null;
 }
 
-function renderLeadScore({ score, label, summary, nextQuestion }) {
+function renderLeadScore({ score, label, summary, nextQuestion, conversationComplete = false }) {
   leadScoreValue.textContent = `${score}/10`;
   leadLabelBadge.textContent = label;
   leadLabelBadge.className = `lead-label ${getLeadLabelVariant(label)}`;
   leadSummary.textContent = summary;
-  leadNextQuestion.textContent = nextQuestion
-    ? `Next question: ${nextQuestion}`
-    : "Next question: BANT is covered, so the lead is ready for a follow-up.";
+  leadNextQuestion.textContent = conversationComplete
+    ? "Conversation complete. Thank you for talking with us. We'll be contacting you soon."
+    : nextQuestion
+      ? `Next question: ${nextQuestion}`
+      : "Next question: BANT is covered, so the lead is ready for a follow-up.";
 }
 
 function renderBantBoard() {
@@ -1413,6 +1436,11 @@ function handleAssistantPlaybackEnd() {
     return;
   }
 
+  if (conversationCompleted) {
+    resetStatus("Conversation complete", "idle");
+    return;
+  }
+
   if (callModeEnabled) {
     scheduleNextListeningTurn();
     return;
@@ -1438,8 +1466,8 @@ function handleAssistantPlaybackPause() {
 function scheduleNextListeningTurn() {
   window.clearTimeout(autoListenTimer);
 
-  if (!callModeEnabled) {
-    resetStatus("Idle", "idle");
+  if (!callModeEnabled || conversationCompleted) {
+    resetStatus(conversationCompleted ? "Conversation complete" : "Idle", "idle");
     updateActionButtons();
     return;
   }
@@ -1495,6 +1523,7 @@ function handleTurnError(message) {
   clearSpeechFinalizationTimer();
   isProcessing = false;
   isFinalizingTurn = false;
+  conversationCompleted = false;
   callModeEnabled = false;
   releaseVoicePipeline();
   resetStatus("Turn failed", "idle");

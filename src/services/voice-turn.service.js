@@ -48,6 +48,7 @@ export async function processVoiceTurn({
   }
 
   const session = getSession(resolvedSessionId);
+  const askedQuestionCount = countAskedQuestions(session.transcript);
   const transcriptText = transcription.transcript || normalizedFallbackTranscript || "";
   const detectedLanguageCode = transcription.language_code || requestedLanguageCode || env.defaultLanguageCode;
   const extractedDetails = extractLeadDetails(transcriptText, session.leadProfile);
@@ -55,6 +56,7 @@ export async function processVoiceTurn({
 
   let leadProfile = localTurnState.leadProfile;
   let qualification = localTurnState.qualification;
+  let responseQualification = qualification;
   let finalAnswer = "";
   let thinking = "";
   let nextQuestion = qualification.nextQuestion;
@@ -73,6 +75,7 @@ export async function processVoiceTurn({
     finalAnswer = geminiTurnState.finalAnswer;
     thinking = geminiTurnState.thinking;
     nextQuestion = geminiTurnState.nextQuestion;
+    responseQualification = qualification;
   } else {
     const assistantReply = await generateLeadReply({
       messages: buildConversationMessages({
@@ -93,12 +96,30 @@ export async function processVoiceTurn({
         nextQuestion
       }
     });
+    responseQualification = {
+      ...qualification,
+      nextQuestion
+    };
   }
 
-  const responseQualification = {
-    ...qualification,
+  const conversationOutcome = resolveConversationOutcome({
+    askedQuestionCount,
+    qualification: responseQualification,
+    finalAnswer,
     nextQuestion
+  });
+
+  finalAnswer = conversationOutcome.finalAnswer;
+  nextQuestion = conversationOutcome.nextQuestion;
+
+  responseQualification = {
+    ...responseQualification,
+    nextQuestion,
+    summary: conversationOutcome.completed
+      ? buildCompletedConversationSummary(responseQualification.labelKey)
+      : responseQualification.summary
   };
+
   const speech = await synthesizeSpeech({
     text: buildSpokenReply(finalAnswer, nextQuestion),
     languageCode: detectedLanguageCode,
@@ -133,6 +154,7 @@ export async function processVoiceTurn({
     score: responseQualification.scoreOutOf10,
     label: responseQualification.label,
     summary: responseQualification.summary,
+    conversation_complete: conversationOutcome.completed,
     assistantAudioBase64: speech.audioBase64,
     assistantAudioMimeType: "audio/wav",
     leadProfile: updatedSession.leadProfile,
@@ -345,6 +367,52 @@ function buildQualificationSummary(bant, labelKey) {
   return `Early-stage lead. We still need ${joinList(missingFields)}.`;
 }
 
+function resolveConversationOutcome({ askedQuestionCount, qualification, finalAnswer, nextQuestion }) {
+  const normalizedNextQuestion = normalizeQuestion(nextQuestion) || qualification.nextQuestion || null;
+  const missingFieldCount = BANT_FIELDS.filter((field) => !qualification.bant[field]).length;
+  const reachedSoftLimit = askedQuestionCount >= QUESTION_SOFT_LIMIT;
+  const reachedHardLimit = askedQuestionCount >= QUESTION_HARD_LIMIT;
+  const shouldComplete = missingFieldCount === 0 || reachedHardLimit || (reachedSoftLimit && missingFieldCount <= 1);
+
+  if (!shouldComplete) {
+    return {
+      completed: false,
+      finalAnswer,
+      nextQuestion: normalizedNextQuestion
+    };
+  }
+
+  return {
+    completed: true,
+    finalAnswer: buildClosingReply(qualification.labelKey),
+    nextQuestion: null
+  };
+}
+
+function buildClosingReply(labelKey) {
+  if (labelKey === "hot") {
+    return "Thanks, that gives us a strong picture. Thank you for talking with us. We'll be contacting you soon.";
+  }
+
+  if (labelKey === "warm") {
+    return "Thanks, that gives us a good picture. Thank you for talking with us. We'll be contacting you soon.";
+  }
+
+  return "Thanks, that gives us enough to review. Thank you for talking with us. We'll be contacting you soon.";
+}
+
+function buildCompletedConversationSummary(labelKey) {
+  if (labelKey === "hot") {
+    return "Lead qualification complete. Strong buying signals captured.";
+  }
+
+  if (labelKey === "warm") {
+    return "Lead qualification complete. The lead looks promising.";
+  }
+
+  return "Lead qualification complete. The team has enough to review the lead.";
+}
+
 function joinList(items) {
   if (!items.length) {
     return "a few more details";
@@ -366,3 +434,11 @@ function clampScore(score) {
 }
 
 const BANT_FIELDS = ["need", "budget", "authority", "timeline"];
+const QUESTION_SOFT_LIMIT = 5;
+const QUESTION_HARD_LIMIT = 6;
+
+function countAskedQuestions(transcriptHistory = []) {
+  return (transcriptHistory || []).reduce((total, entry) => {
+    return total + (String(entry?.assistant || "").includes("?") ? 1 : 0);
+  }, 0);
+}
