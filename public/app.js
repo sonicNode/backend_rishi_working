@@ -604,7 +604,16 @@ function handleRecognitionResult(event) {
     return;
   }
 
+  const now = Date.now();
   activeTurn.partialTranscript = combinedTranscript;
+  activeTurn.lastTranscriptAt = now;
+  activeTurn.lastSpeechAt = now;
+  activeTurn.hasSpoken = true;
+
+  if (!activeTurn.voiceStartedAt) {
+    activeTurn.voiceStartedAt = now - REALTIME_CONFIG.minSpeechMs;
+  }
+
   publishPartialTranscript(combinedTranscript, {
     final: interimSegments.length === 0
   });
@@ -614,7 +623,7 @@ function handleRecognitionResult(event) {
     return;
   }
 
-  if (finalSegments.length > 0 && activeTurn.hasSpoken && getCurrentAudioLevel() <= getDynamicSpeechThreshold()) {
+  if (finalSegments.length > 0) {
     scheduleSpeechFinalization("recognition-final");
   }
 }
@@ -624,6 +633,10 @@ function handleRecognitionEnd() {
 
   if (!callModeEnabled || !isListening || isFinalizingTurn) {
     return;
+  }
+
+  if (activeTurn?.partialTranscript?.trim() && activeTurn.hasSpoken) {
+    scheduleSpeechFinalization("recognition-end");
   }
 
   window.setTimeout(() => {
@@ -683,8 +696,9 @@ function startVoiceActivityMonitor() {
       return;
     }
 
-    const level = getCurrentAudioLevel();
+    const level = getSpeechActivityLevel();
     const threshold = getDynamicSpeechThreshold();
+    const silenceThreshold = Math.max(audioMetrics.noiseFloor + 0.008, threshold * 0.78);
     const now = Date.now();
 
     if (level > threshold) {
@@ -707,11 +721,18 @@ function startVoiceActivityMonitor() {
       activeTurn.lastSpeechAt = 0;
     }
 
-    if (
+    const voiceWentQuiet =
       activeTurn.hasSpoken &&
       activeTurn.lastSpeechAt &&
-      now - activeTurn.lastSpeechAt >= REALTIME_CONFIG.silenceMs
-    ) {
+      now - activeTurn.lastSpeechAt >= REALTIME_CONFIG.silenceMs &&
+      level <= silenceThreshold;
+
+    const transcriptWentQuiet =
+      activeTurn.hasSpoken &&
+      activeTurn.lastTranscriptAt &&
+      now - activeTurn.lastTranscriptAt >= REALTIME_CONFIG.recognitionSilenceMs;
+
+    if (voiceWentQuiet || transcriptWentQuiet) {
       void finishListeningTurn("silence");
       return;
     }
@@ -1770,6 +1791,10 @@ function getCurrentAudioLevel() {
   return Math.max(audioMetrics.level, audioMetrics.smoothedLevel);
 }
 
+function getSpeechActivityLevel() {
+  return Math.max(audioMetrics.level, audioMetrics.smoothedLevel * 0.55);
+}
+
 function getDynamicSpeechThreshold() {
   return audioMetrics.dynamicThreshold || REALTIME_CONFIG.vadThreshold;
 }
@@ -1799,6 +1824,7 @@ function createTurnState(mimeType) {
     stopReason: "silence",
     voiceStartedAt: 0,
     lastSpeechAt: 0,
+    lastTranscriptAt: 0,
     hasSpoken: false
   };
 }
