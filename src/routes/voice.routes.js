@@ -4,6 +4,7 @@ import { env } from "../config/env.js";
 import { asyncHandler } from "../utils/async-handler.js";
 import { createHttpError } from "../utils/http-error.js";
 import {
+  buildSpokenReply,
   buildLeadSystemPrompt,
   buildLeadThinking,
   extractFollowUpQuestion,
@@ -108,7 +109,7 @@ router.post(
     });
 
     const session = getSession(sessionId);
-    const extractedDetails = extractLeadDetails(transcription.transcript || "");
+    const extractedDetails = extractLeadDetails(transcription.transcript || "", session.leadProfile);
     const { leadProfile, qualification } = mergeAndQualify(session.leadProfile, extractedDetails);
     const detectedLanguageCode = transcription.language_code || requestedLanguageCode || env.defaultLanguageCode;
 
@@ -134,8 +135,13 @@ router.post(
     const assistantReply = await generateLeadReply({
       messages: conversationMessages
     });
-    const finalAnswer = normalizeAssistantReply(assistantReply.text);
+    let finalAnswer = normalizeAssistantReply(assistantReply.text);
     const nextQuestion = extractFollowUpQuestion(finalAnswer) || qualification.nextQuestion;
+
+    if (nextQuestion && !finalAnswer.includes(nextQuestion)) {
+      finalAnswer = `${finalAnswer} ${nextQuestion}`.trim();
+    }
+
     const responseQualification = {
       ...qualification,
       nextQuestion
@@ -146,7 +152,7 @@ router.post(
     });
 
     const speech = await synthesizeSpeech({
-      text: finalAnswer,
+      text: buildSpokenReply(finalAnswer, nextQuestion),
       languageCode: detectedLanguageCode,
       speaker
     });
@@ -154,7 +160,7 @@ router.post(
     const updatedSession = updateSession(sessionId, (current) => ({
       ...current,
       leadProfile,
-      qualification,
+      qualification: responseQualification,
       transcript: [
         ...current.transcript,
         {

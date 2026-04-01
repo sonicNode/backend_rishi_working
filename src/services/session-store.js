@@ -35,8 +35,8 @@ function defaultSession(sessionId) {
       scoreOutOf10: 0,
       labelKey: "cold",
       label: "Cold \u2744\uFE0F",
-      nextQuestion: "What budget range have you set aside for this?",
-      summary: "Early-stage lead. We still need to confirm budget, authority, need, and timeline."
+      nextQuestion: "What are you looking to solve right now?",
+      summary: "Share the requirement and Lead Sathi will qualify the lead live."
     }
   };
 }

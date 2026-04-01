@@ -378,7 +378,7 @@ body:has(.status-badge.recording) .primary {
 }
 
 .message-list:empty::before {
-  content: "Start the conversation to capture signals, qualify the lead, and hear the response.";
+  content: "Namaste. Start talking and Lead Sathi will understand the need, qualify the lead, and guide the next step.";
   display: block;
   padding: 18px 20px;
   border: 1px dashed rgba(148, 163, 184, 0.34);
@@ -631,18 +631,25 @@ body:has(.status-badge.recording) .primary {
   }
 
   .app-shell {
+    display: flex;
+    flex-direction: column;
     grid-template-columns: minmax(0, 720px);
     width: min(100%, calc(100% - 24px));
   }
 
-  .hero,
-  .transcript-panel,
-  .insights-panel {
-    grid-column: 1;
+  .hero {
+    order: 1;
   }
 
   .insights-panel {
-    position: static;
+    order: 2;
+    position: sticky;
+    top: 12px;
+    z-index: 6;
+  }
+
+  .transcript-panel {
+    order: 3;
   }
 
   .controls-panel {
@@ -659,7 +666,7 @@ body:has(.status-badge.recording) .primary {
 @media (max-width: 760px) {
   body {
     padding-top: 16px;
-    padding-bottom: 368px;
+    padding-bottom: 388px;
   }
 
   .app-shell {
@@ -673,7 +680,7 @@ body:has(.status-badge.recording) .primary {
   }
 
   .hero h1 {
-    font-size: 1.26rem;
+    font-size: 1.22rem;
   }
 
   .controls-panel {
@@ -700,16 +707,31 @@ body:has(.status-badge.recording) .primary {
     justify-content: stretch;
   }
 
+  .primary {
+    width: 64px;
+    height: 64px;
+  }
+
   .secondary {
     flex: 1 1 auto;
+    min-height: 60px;
+    font-size: 0.96rem;
   }
 
   .message-card {
-    max-width: 100%;
+    max-width: 86%;
+    padding: 13px 14px;
   }
 
   .score-row {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .message-text,
+  .score-summary,
+  .next-question,
+  .bant-value {
+    font-size: 0.94rem;
   }
 }

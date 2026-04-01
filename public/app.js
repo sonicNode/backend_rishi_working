@@ -15,6 +15,11 @@ const speakerInput = document.querySelector("#speaker");
 const userPlayback = document.querySelector("#userPlayback");
 const assistantPlayback = document.querySelector("#assistantPlayback");
 const messageTemplate = document.querySelector("#messageTemplate");
+const WELCOME_VARIATIONS = [
+  "Welcome to Lead Sathi. Namaste! Let's understand your requirements and see how we can help you better.",
+  "Namaste! Welcome to Lead Sathi. Let's get started.",
+  "Hello ji! Welcome to Lead Sathi. I'll help qualify your needs."
+];
 const BANT_FIELDS = [
   { key: "budget", label: "Budget" },
   { key: "authority", label: "Authority" },
@@ -32,21 +37,26 @@ let mediaRecorder = null;
 let mediaStream = null;
 let audioChunks = [];
 let bantState = { ...DEFAULT_BANT };
+let pendingAssistantAudio = null;
 
 sessionIdInput.value = `lead-session-${Date.now()}`;
 renderLeadScore({
   score: 0,
   label: "Cold \u2744\uFE0F",
-  summary: "We'll update this as the conversation moves through BANT.",
-  nextQuestion: "What budget range have you set aside for this?"
+  summary: "Share the requirement and Lead Sathi will qualify the lead live.",
+  nextQuestion: "What are you looking to solve right now?"
 });
 renderBantBoard();
+initializeWelcomeExperience();
 
 startButton.addEventListener("click", startRecording);
 stopButton.addEventListener("click", stopRecording);
+document.addEventListener("pointerdown", consumePendingAssistantAudio, { passive: true });
+document.addEventListener("keydown", consumePendingAssistantAudio);
 
 async function startRecording() {
   resetStatus("Requesting microphone...", "processing");
+  assistantPlayback.pause();
 
   try {
     mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -66,7 +76,7 @@ async function startRecording() {
 
     startButton.disabled = true;
     stopButton.disabled = false;
-    resetStatus("Recording...", "recording");
+    resetStatus("Listening...", "recording");
   } catch (error) {
     console.error(error);
     resetStatus("Microphone access failed", "idle");
@@ -80,7 +90,7 @@ function stopRecording() {
   }
 
   stopButton.disabled = true;
-  resetStatus("Uploading audio...", "processing");
+  resetStatus("Processing...", "processing");
   mediaRecorder.stop();
 
   if (mediaStream) {
@@ -167,10 +177,7 @@ function renderRoundtrip(data) {
     type: data.assistantAudioMimeType || "audio/wav"
   });
 
-  previewAudio(assistantPlayback, assistantBlob);
-  assistantPlayback.play().catch(() => {
-    appendMessage("system", "Assistant audio is ready. Press play if the browser blocks autoplay.");
-  });
+  queueAssistantAudio(assistantBlob, "Assistant audio is ready. Press play if the browser blocks autoplay.");
 }
 
 function appendMessage(role, text, options = {}) {
@@ -227,6 +234,72 @@ function previewAudio(element, blob) {
   element.classList.remove("hidden");
 }
 
+function initializeWelcomeExperience() {
+  const welcomeMessage = getWelcomeMessage();
+  appendMessage("assistant", welcomeMessage);
+  playAssistantText(welcomeMessage).catch((error) => {
+    console.error(error);
+  });
+}
+
+async function playAssistantText(text) {
+  const response = await fetch("/api/voice/speak", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      text,
+      languageCode: languageSelect.value,
+      speaker: speakerInput.value.trim() || "shubh"
+    })
+  });
+
+  const payload = await response.json();
+
+  if (!response.ok || !payload.success) {
+    throw new Error(payload.error || "Could not generate speech.");
+  }
+
+  const audioBytes = base64ToUint8Array(payload.data.audioBase64);
+  const audioBlob = new Blob([audioBytes], {
+    type: payload.data.audioMimeType || "audio/wav"
+  });
+
+  queueAssistantAudio(audioBlob);
+}
+
+function queueAssistantAudio(blob, fallbackMessage) {
+  previewAudio(assistantPlayback, blob);
+  assistantPlayback.play().catch(() => {
+    pendingAssistantAudio = {
+      blob,
+      fallbackMessage
+    };
+
+    if (fallbackMessage) {
+      appendMessage("system", fallbackMessage);
+    }
+  });
+}
+
+function consumePendingAssistantAudio(event) {
+  if (!pendingAssistantAudio) {
+    return;
+  }
+
+  if (event?.target && (event.target === startButton || startButton.contains(event.target))) {
+    return;
+  }
+
+  const { blob } = pendingAssistantAudio;
+  pendingAssistantAudio = null;
+  previewAudio(assistantPlayback, blob);
+  assistantPlayback.play().catch(() => {
+    pendingAssistantAudio = { blob };
+  });
+}
+
 function base64ToUint8Array(base64) {
   const binaryString = atob(base64);
   const bytes = new Uint8Array(binaryString.length);
@@ -266,4 +339,8 @@ function formatBantValue(value) {
   return value
     .replace(/-/g, " ")
     .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function getWelcomeMessage() {
+  return WELCOME_VARIATIONS[Math.floor(Math.random() * WELCOME_VARIATIONS.length)];
 }
