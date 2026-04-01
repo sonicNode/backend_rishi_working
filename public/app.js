@@ -1168,14 +1168,18 @@ function extractTimelineHint(text) {
 
 function extractAuthorityHint(text) {
   if (
-    /\b(i am (?:the )?decision maker|i'm (?:the )?decision maker|i decide|i can decide|i am owner|i'm owner|i am the owner|i'm the owner|my company)\b/i.test(
+    /\b(i am (?:the )?decision maker|i'm (?:the )?decision maker|i decide|i can decide|i am owner|i'm owner|i am the owner|i'm the owner|i am the founder|i'm the founder|i am the director|i'm the director|i am handling this|i'm handling this|this is my call|i will take the call|i'll take the call|main decide karunga|main decide karungi|main final call lunga|main final call lungi|hum decide karenge|my company)\b/i.test(
       text
     )
   ) {
     return "decision-maker";
   }
 
-  if (/\b(need approval|not the decision maker|my manager decides|my boss decides|someone else decides)\b/i.test(text)) {
+  if (
+    /\b(need approval|not the decision maker|my manager decides|my boss decides|someone else decides|i need to ask|i need to check with|i have to check with|i have to discuss with|my team decides|my husband decides|my wife decides|my father decides|my mother decides|my partner decides|final call is not mine|approval lagega|approval chahiye|ghar pe puchna padega)\b/i.test(
+      text
+    )
+  ) {
     return "needs-approval";
   }
 

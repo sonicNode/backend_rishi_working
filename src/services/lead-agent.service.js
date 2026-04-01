@@ -441,7 +441,7 @@ function detectTimeline(text) {
 
 function detectAuthority(text, role) {
   if (
-    /(?:i am (?:the )?decision maker|i'm (?:the )?decision maker|i decide|i can decide|i'll decide|i make the decision|i take the final call|final decision is mine|i approve|i sign off|i am the owner|i'm the owner|i am the founder|i'm the founder)/i.test(
+    /(?:i am (?:the )?decision maker|i'm (?:the )?decision maker|i decide|i can decide|i'll decide|i make the decision|i take the final call|final decision is mine|i approve|i sign off|i am the owner|i'm the owner|i am the founder|i'm the founder|i am the director|i'm the director|i am handling this|i'm handling this|this is my call|i will take the call|i'll take the call|main decide karunga|main decide karungi|main final call lunga|main final call lungi|hum decide karenge)/i.test(
       text
     ) ||
     isDecisionMakerRole(role)
@@ -450,7 +450,7 @@ function detectAuthority(text, role) {
   }
 
   if (
-    /(?:need approval|not the decision maker|someone else decides|my manager decides|my boss decides|finance decides|procurement decides|leadership decides|founder decides|ceo decides|i need to check internally)/i.test(
+    /(?:need approval|not the decision maker|someone else decides|my manager decides|my boss decides|finance decides|procurement decides|leadership decides|founder decides|ceo decides|i need to check internally|i need to ask|i need to check with|i have to check with|i have to discuss with|need to discuss with my team|my team decides|my husband decides|my wife decides|my father decides|my mother decides|my brother decides|my sister decides|my partner decides|final call is not mine|approval lagega|approval chahiye|ghar pe puchna padega)/i.test(
       text
     )
   ) {
