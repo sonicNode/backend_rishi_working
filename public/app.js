@@ -37,9 +37,8 @@ const DEFAULT_BANT = {
 };
 const REALTIME_CONFIG = {
   recorderTimesliceMs: 120,
-  silenceMs: 620,
-  recognitionSilenceMs: 300,
-  hardSilenceMs: 1200,
+  silenceMs: 720,
+  recognitionSilenceMs: 420,
   minSpeechMs: 260,
   vadThreshold: 0.045,
   bargeInThreshold: 0.075,
@@ -289,6 +288,7 @@ function ensureSpeechRecognition() {
   speechRecognition.interimResults = true;
   speechRecognition.maxAlternatives = 1;
   speechRecognition.addEventListener("result", handleRecognitionResult);
+  speechRecognition.addEventListener("speechend", handleRecognitionSpeechEnd);
   speechRecognition.addEventListener("end", handleRecognitionEnd);
   speechRecognition.addEventListener("error", handleRecognitionError);
 }
@@ -640,6 +640,14 @@ function handleRecognitionEnd() {
   }, 40);
 }
 
+function handleRecognitionSpeechEnd() {
+  if (!callModeEnabled || !isListening || isFinalizingTurn || !activeTurn?.hasSpoken) {
+    return;
+  }
+
+  scheduleSpeechFinalization("speechend");
+}
+
 function handleRecognitionError(error) {
   if (error.error === "not-allowed" || error.error === "service-not-allowed") {
     console.warn("Speech recognition permission was denied.");
@@ -694,16 +702,16 @@ function startVoiceActivityMonitor() {
 
     const level = getSpeechActivityLevel();
     const threshold = getDynamicSpeechThreshold();
-    const silenceThreshold = Math.max(audioMetrics.noiseFloor + 0.012, threshold * 1.04);
-    const hardSilenceThreshold = Math.max(audioMetrics.noiseFloor + 0.02, threshold * 1.28);
+    const speechThreshold = Math.max(threshold * 1.14, audioMetrics.noiseFloor + REALTIME_CONFIG.noiseFloorMargin + 0.006);
     const now = Date.now();
 
-    if (level > threshold) {
+    if (level > speechThreshold) {
       if (!activeTurn.voiceStartedAt) {
         activeTurn.voiceStartedAt = now;
       }
 
       activeTurn.lastSpeechAt = now;
+      clearSpeechFinalizationTimer();
 
       if (now - activeTurn.voiceStartedAt >= REALTIME_CONFIG.minSpeechMs) {
         activeTurn.hasSpoken = true;
@@ -720,23 +728,16 @@ function startVoiceActivityMonitor() {
 
     const lastActivityAt = Math.max(activeTurn.lastSpeechAt || 0, activeTurn.lastTranscriptAt || 0);
     const silenceElapsed = lastActivityAt ? now - lastActivityAt : 0;
-    const voiceWentQuiet =
+    const silenceReached =
       activeTurn.hasSpoken &&
       lastActivityAt &&
-      silenceElapsed >= REALTIME_CONFIG.silenceMs &&
-      level <= silenceThreshold;
+      silenceElapsed >= REALTIME_CONFIG.silenceMs;
 
     const transcriptSettled =
       !activeTurn.lastTranscriptAt ||
       now - activeTurn.lastTranscriptAt >= REALTIME_CONFIG.recognitionSilenceMs;
 
-    const hardSilenceReached =
-      activeTurn.hasSpoken &&
-      lastActivityAt &&
-      silenceElapsed >= REALTIME_CONFIG.hardSilenceMs &&
-      level <= hardSilenceThreshold;
-
-    if ((voiceWentQuiet && transcriptSettled) || hardSilenceReached) {
+    if (silenceReached && transcriptSettled) {
       void finishListeningTurn("silence");
       return;
     }
@@ -1822,7 +1823,7 @@ function getCurrentAudioLevel() {
 }
 
 function getSpeechActivityLevel() {
-  return Math.max(audioMetrics.level, audioMetrics.smoothedLevel * 0.55);
+  return Math.max(audioMetrics.smoothedLevel, audioMetrics.level * 0.72);
 }
 
 function getDynamicSpeechThreshold() {
