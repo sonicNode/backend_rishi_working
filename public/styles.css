@@ -1,0 +1,254 @@
+:root {
+  --bg: #f6efe4;
+  --panel: rgba(255, 252, 246, 0.85);
+  --panel-border: rgba(113, 73, 34, 0.15);
+  --ink: #1f1b18;
+  --muted: #6a5f53;
+  --accent: #bf5b2c;
+  --accent-dark: #89411f;
+  --accent-soft: #f0d6be;
+  --success: #1f7a4d;
+  --danger: #a23728;
+  --shadow: 0 24px 60px rgba(78, 46, 18, 0.12);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: Georgia, "Times New Roman", serif;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at top left, rgba(255, 217, 179, 0.7), transparent 35%),
+    radial-gradient(circle at bottom right, rgba(191, 91, 44, 0.18), transparent 25%),
+    linear-gradient(135deg, #f7f2e9 0%, #f3e4d0 100%);
+}
+
+.app-shell {
+  width: min(1120px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 48px 0 64px;
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.hero {
+  grid-column: 1 / -1;
+  padding: 10px 4px;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent-dark);
+  font-size: 0.78rem;
+}
+
+.hero h1 {
+  margin: 0;
+  max-width: 12ch;
+  font-size: clamp(2.6rem, 6vw, 5rem);
+  line-height: 0.95;
+}
+
+.hero-copy {
+  max-width: 58ch;
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 1.05rem;
+  line-height: 1.7;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  box-shadow: var(--shadow);
+  border-radius: 24px;
+  padding: 22px;
+  backdrop-filter: blur(16px);
+}
+
+.controls-panel,
+.transcript-panel,
+.insights-panel {
+  min-height: 320px;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.panel-header h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 0.86rem;
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+}
+
+.status-badge.recording {
+  background: rgba(162, 55, 40, 0.14);
+  color: var(--danger);
+}
+
+.status-badge.processing {
+  background: rgba(191, 91, 44, 0.16);
+  color: var(--accent-dark);
+}
+
+.status-badge.ready {
+  background: rgba(31, 122, 77, 0.16);
+  color: var(--success);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.field span {
+  font-size: 0.92rem;
+  color: var(--muted);
+}
+
+.field input,
+.field select,
+button {
+  font: inherit;
+}
+
+.field input,
+.field select {
+  width: 100%;
+  border: 1px solid rgba(113, 73, 34, 0.18);
+  border-radius: 14px;
+  padding: 13px 14px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--ink);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+button {
+  border: 0;
+  border-radius: 999px;
+  padding: 13px 18px;
+  cursor: pointer;
+  transition: transform 160ms ease, opacity 160ms ease, background 160ms ease;
+}
+
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.primary {
+  background: var(--accent);
+  color: white;
+}
+
+.secondary {
+  background: rgba(31, 27, 24, 0.08);
+  color: var(--ink);
+}
+
+.audio-player {
+  width: 100%;
+  margin-top: 16px;
+}
+
+.hidden {
+  display: none;
+}
+
+.message-list {
+  display: grid;
+  gap: 12px;
+}
+
+.message-card {
+  border-radius: 18px;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(113, 73, 34, 0.1);
+}
+
+.message-role {
+  display: inline-block;
+  margin-bottom: 6px;
+  color: var(--accent-dark);
+  font-size: 0.84rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.message-text {
+  margin: 0;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.json-view {
+  margin: 0 0 14px;
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(31, 27, 24, 0.92);
+  color: #f6efe4;
+  min-height: 126px;
+  overflow: auto;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+@media (max-width: 860px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+    width: min(100%, calc(100% - 20px));
+    padding-top: 28px;
+  }
+
+  .hero h1 {
+    max-width: none;
+  }
+
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .actions {
+    flex-direction: column;
+  }
+}

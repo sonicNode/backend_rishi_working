@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sarvam Voice Assistant Demo</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="hero">
+        <p class="eyebrow">Lead Qualifying Voice Assistant</p>
+        <h1>Talk to your backend with a live voice roundtrip demo</h1>
+        <p class="hero-copy">
+          This browser demo records your microphone, sends it to the Node.js backend,
+          and plays back the Sarvam AI voice reply.
+        </p>
+      </section>
+
+      <section class="panel controls-panel">
+        <div class="panel-header">
+          <h2>Voice Controls</h2>
+          <span id="statusBadge" class="status-badge idle">Idle</span>
+        </div>
+
+        <label class="field">
+          <span>Session ID</span>
+          <input id="sessionId" type="text" placeholder="lead-demo-session" />
+        </label>
+
+        <div class="grid">
+          <label class="field">
+            <span>Language</span>
+            <select id="languageCode">
+              <option value="en-IN">English (India)</option>
+              <option value="hi-IN">Hindi</option>
+              <option value="bn-IN">Bengali</option>
+              <option value="ta-IN">Tamil</option>
+              <option value="te-IN">Telugu</option>
+              <option value="kn-IN">Kannada</option>
+              <option value="ml-IN">Malayalam</option>
+              <option value="mr-IN">Marathi</option>
+              <option value="gu-IN">Gujarati</option>
+              <option value="pa-IN">Punjabi</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>Speaker</span>
+            <input id="speaker" type="text" value="shubh" placeholder="shubh" />
+          </label>
+        </div>
+
+        <div class="actions">
+          <button id="startButton" class="primary">Start Recording</button>
+          <button id="stopButton" class="secondary" disabled>Stop & Send</button>
+        </div>
+
+        <audio id="userPlayback" controls class="audio-player hidden"></audio>
+        <audio id="assistantPlayback" controls class="audio-player hidden"></audio>
+      </section>
+
+      <section class="panel transcript-panel">
+        <div class="panel-header">
+          <h2>Conversation</h2>
+        </div>
+        <div id="messageList" class="message-list"></div>
+      </section>
+
+      <section class="panel insights-panel">
+        <div class="panel-header">
+          <h2>Lead Qualification Snapshot</h2>
+        </div>
+        <pre id="leadProfile" class="json-view">{}</pre>
+        <pre id="qualification" class="json-view">{}</pre>
+      </section>
+    </main>
+
+    <template id="messageTemplate">
+      <article class="message-card">
+        <span class="message-role"></span>
+        <p class="message-text"></p>
+      </article>
+    </template>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
