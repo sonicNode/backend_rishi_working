@@ -3,7 +3,14 @@ import multer from "multer";
 import { env } from "../config/env.js";
 import { asyncHandler } from "../utils/async-handler.js";
 import { createHttpError } from "../utils/http-error.js";
-import { buildLeadSystemPrompt, extractLeadDetails, mergeAndQualify } from "../services/lead-agent.service.js";
+import {
+  buildLeadSystemPrompt,
+  buildLeadThinking,
+  extractFollowUpQuestion,
+  extractLeadDetails,
+  mergeAndQualify,
+  normalizeAssistantReply
+} from "../services/lead-agent.service.js";
 import { generateLeadReply, synthesizeSpeech, transcribeAudio } from "../services/sarvam.service.js";
 import { deleteSession, getSession, updateSession } from "../services/session-store.js";
 
@@ -110,7 +117,8 @@ router.post(
         role: "system",
         content: buildLeadSystemPrompt({
           languageCode: detectedLanguageCode,
-          leadProfile
+          leadProfile,
+          qualification
         })
       },
       ...session.transcript.flatMap((entry) => [
@@ -126,9 +134,19 @@ router.post(
     const assistantReply = await generateLeadReply({
       messages: conversationMessages
     });
+    const finalAnswer = normalizeAssistantReply(assistantReply.text);
+    const nextQuestion = extractFollowUpQuestion(finalAnswer) || qualification.nextQuestion;
+    const responseQualification = {
+      ...qualification,
+      nextQuestion
+    };
+    const thinking = buildLeadThinking({
+      leadProfile,
+      qualification: responseQualification
+    });
 
     const speech = await synthesizeSpeech({
-      text: assistantReply.text,
+      text: finalAnswer,
       languageCode: detectedLanguageCode,
       speaker
     });
@@ -141,7 +159,7 @@ router.post(
         ...current.transcript,
         {
           user: transcription.transcript,
-          assistant: assistantReply.text,
+          assistant: finalAnswer,
           languageCode: detectedLanguageCode,
           createdAt: new Date().toISOString()
         }
@@ -154,11 +172,21 @@ router.post(
         sessionId,
         userTranscript: transcription.transcript,
         detectedLanguageCode,
-        assistantText: assistantReply.text,
+        assistantText: finalAnswer,
+        final_answer: finalAnswer,
+        thinking,
+        next_question: nextQuestion,
+        bant: responseQualification.bant,
+        score: responseQualification.scoreOutOf10,
+        label: responseQualification.label,
+        summary: responseQualification.summary,
         assistantAudioBase64: speech.audioBase64,
         assistantAudioMimeType: "audio/wav",
         leadProfile: updatedSession.leadProfile,
-        qualification: updatedSession.qualification
+        qualification: {
+          ...updatedSession.qualification,
+          nextQuestion
+        }
       }
     });
   })

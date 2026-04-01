@@ -4,18 +4,43 @@ const statusBadge = document.querySelector("#statusBadge");
 const messageList = document.querySelector("#messageList");
 const leadProfileView = document.querySelector("#leadProfile");
 const qualificationView = document.querySelector("#qualification");
+const leadScoreValue = document.querySelector("#leadScoreValue");
+const leadLabelBadge = document.querySelector("#leadLabelBadge");
+const leadSummary = document.querySelector("#leadSummary");
+const leadNextQuestion = document.querySelector("#leadNextQuestion");
+const bantBoard = document.querySelector("#bantBoard");
 const sessionIdInput = document.querySelector("#sessionId");
 const languageSelect = document.querySelector("#languageCode");
 const speakerInput = document.querySelector("#speaker");
 const userPlayback = document.querySelector("#userPlayback");
 const assistantPlayback = document.querySelector("#assistantPlayback");
 const messageTemplate = document.querySelector("#messageTemplate");
+const BANT_FIELDS = [
+  { key: "budget", label: "Budget" },
+  { key: "authority", label: "Authority" },
+  { key: "need", label: "Need" },
+  { key: "timeline", label: "Timeline" }
+];
+const DEFAULT_BANT = {
+  budget: null,
+  authority: null,
+  need: null,
+  timeline: null
+};
 
 let mediaRecorder = null;
 let mediaStream = null;
 let audioChunks = [];
+let bantState = { ...DEFAULT_BANT };
 
 sessionIdInput.value = `lead-session-${Date.now()}`;
+renderLeadScore({
+  score: 0,
+  label: "Cold \u2744\uFE0F",
+  summary: "We'll update this as the conversation moves through BANT.",
+  nextQuestion: "What budget range have you set aside for this?"
+});
+renderBantBoard();
 
 startButton.addEventListener("click", startRecording);
 stopButton.addEventListener("click", stopRecording);
@@ -104,11 +129,38 @@ async function handleRecordingStop() {
 }
 
 function renderRoundtrip(data) {
+  const finalAnswer = data.final_answer || data.assistantText || "";
+  const thinking = data.thinking || "";
+  const score = Number.isFinite(data.score) ? data.score : data.qualification?.scoreOutOf10 || 0;
+  const label = data.label || data.qualification?.label || "Cold \u2744\uFE0F";
+  const summary = data.summary || data.qualification?.summary || "We'll keep updating the lead score as details come in.";
+  const nextQuestion = data.next_question || data.qualification?.nextQuestion || "";
+
+  bantState = {
+    ...DEFAULT_BANT,
+    ...(data.bant || data.qualification?.bant || {})
+  };
+
   appendMessage("you", data.userTranscript);
-  appendMessage("assistant", data.assistantText);
+  appendMessage("assistant", finalAnswer, { thinking });
+
+  renderLeadScore({
+    score,
+    label,
+    summary,
+    nextQuestion
+  });
+  renderBantBoard();
 
   leadProfileView.textContent = JSON.stringify(data.leadProfile, null, 2);
-  qualificationView.textContent = JSON.stringify(data.qualification, null, 2);
+  qualificationView.textContent = JSON.stringify(
+    {
+      ...data.qualification,
+      nextQuestion
+    },
+    null,
+    2
+  );
 
   const audioBytes = base64ToUint8Array(data.assistantAudioBase64);
   const assistantBlob = new Blob([audioBytes], {
@@ -121,11 +173,53 @@ function renderRoundtrip(data) {
   });
 }
 
-function appendMessage(role, text) {
+function appendMessage(role, text, options = {}) {
   const fragment = messageTemplate.content.cloneNode(true);
-  fragment.querySelector(".message-role").textContent = role;
-  fragment.querySelector(".message-text").textContent = text;
+  const card = fragment.querySelector(".message-card");
+  const roleElement = fragment.querySelector(".message-role");
+  const textElement = fragment.querySelector(".message-text");
+  const thinkingElement = fragment.querySelector(".message-thinking");
+
+  card.classList.add(`role-${role}`);
+  roleElement.textContent = role;
+  textElement.textContent = text;
+
+  if (options.thinking) {
+    thinkingElement.textContent = options.thinking;
+    thinkingElement.classList.remove("hidden");
+  }
+
   messageList.prepend(fragment);
+}
+
+function renderLeadScore({ score, label, summary, nextQuestion }) {
+  leadScoreValue.textContent = `${score}/10`;
+  leadLabelBadge.textContent = label;
+  leadLabelBadge.className = `lead-label ${getLeadLabelVariant(label)}`;
+  leadSummary.textContent = summary;
+  leadNextQuestion.textContent = nextQuestion
+    ? `Next question: ${nextQuestion}`
+    : "Next question: BANT is covered, so the lead is ready for a follow-up.";
+}
+
+function renderBantBoard() {
+  bantBoard.replaceChildren();
+
+  BANT_FIELDS.forEach(({ key, label }) => {
+    const item = document.createElement("article");
+    const fieldLabel = document.createElement("span");
+    const fieldValue = document.createElement("strong");
+    const value = bantState[key];
+
+    item.className = `bant-item ${value ? "filled" : "pending"}`;
+    fieldLabel.className = "bant-label";
+    fieldLabel.textContent = label;
+    fieldValue.className = "bant-value";
+    fieldValue.textContent = value ? formatBantValue(value) : "Pending";
+
+    item.append(fieldLabel, fieldValue);
+    bantBoard.append(item);
+  });
 }
 
 function previewAudio(element, blob) {
@@ -152,4 +246,24 @@ function getSupportedMimeType() {
 function resetStatus(label, variant) {
   statusBadge.textContent = label;
   statusBadge.className = `status-badge ${variant}`;
+}
+
+function getLeadLabelVariant(label) {
+  const normalized = label.toLowerCase();
+
+  if (normalized.includes("hot")) {
+    return "hot";
+  }
+
+  if (normalized.includes("warm")) {
+    return "warm";
+  }
+
+  return "cold";
+}
+
+function formatBantValue(value) {
+  return value
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
 }

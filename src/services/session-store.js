@@ -25,7 +25,18 @@ function defaultSession(sessionId) {
     qualification: {
       score: 0,
       status: "discovery",
-      missingFields: ["name", "company", "useCase", "budget", "timeline"]
+      missingFields: ["name", "company", "useCase", "budget", "timeline"],
+      bant: {
+        budget: null,
+        authority: null,
+        need: null,
+        timeline: null
+      },
+      scoreOutOf10: 0,
+      labelKey: "cold",
+      label: "Cold \u2744\uFE0F",
+      nextQuestion: "What budget range have you set aside for this?",
+      summary: "Early-stage lead. We still need to confirm budget, authority, need, and timeline."
     }
   };
 }

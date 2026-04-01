@@ -71,6 +71,20 @@
         <div class="panel-header">
           <h2>Lead Qualification Snapshot</h2>
         </div>
+        <div class="score-card">
+          <p class="score-kicker">Lead score</p>
+          <div class="score-row">
+            <strong id="leadScoreValue" class="score-value">0/10</strong>
+            <span id="leadLabelBadge" class="lead-label cold">Cold &#10052;&#65039;</span>
+          </div>
+          <p id="leadSummary" class="score-summary">
+            We&apos;ll update this as the conversation moves through BANT.
+          </p>
+          <p id="leadNextQuestion" class="next-question">
+            Next question: What budget range have you set aside for this?
+          </p>
+        </div>
+        <div id="bantBoard" class="bant-board"></div>
         <pre id="leadProfile" class="json-view">{}</pre>
         <pre id="qualification" class="json-view">{}</pre>
       </section>
@@ -80,6 +94,7 @@
       <article class="message-card">
         <span class="message-role"></span>
         <p class="message-text"></p>
+        <p class="message-thinking hidden"></p>
       </article>
     </template>
 
