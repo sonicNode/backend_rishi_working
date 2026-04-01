@@ -9,7 +9,7 @@ import {
   mergeAndQualify,
   normalizeAssistantReply
 } from "./lead-agent.service.js";
-import { generateLeadIntelligence } from "./openai.service.js";
+import { generateLeadIntelligence } from "./gemini.service.js";
 import { generateLeadReply, synthesizeSpeech, transcribeAudio } from "./sarvam.service.js";
 import { getSession, updateSession } from "./session-store.js";
 
@@ -59,7 +59,7 @@ export async function processVoiceTurn({
   let thinking = "";
   let nextQuestion = qualification.nextQuestion;
 
-  const openAiTurnState = await maybeApplyOpenAiIntelligence({
+  const geminiTurnState = await maybeApplyGeminiIntelligence({
     transcriptText,
     languageCode: detectedLanguageCode,
     session,
@@ -67,12 +67,12 @@ export async function processVoiceTurn({
     qualification
   });
 
-  if (openAiTurnState) {
-    leadProfile = openAiTurnState.leadProfile;
-    qualification = openAiTurnState.qualification;
-    finalAnswer = openAiTurnState.finalAnswer;
-    thinking = openAiTurnState.thinking;
-    nextQuestion = openAiTurnState.nextQuestion;
+  if (geminiTurnState) {
+    leadProfile = geminiTurnState.leadProfile;
+    qualification = geminiTurnState.qualification;
+    finalAnswer = geminiTurnState.finalAnswer;
+    thinking = geminiTurnState.thinking;
+    nextQuestion = geminiTurnState.nextQuestion;
   } else {
     const assistantReply = await generateLeadReply({
       messages: buildConversationMessages({
@@ -143,7 +143,7 @@ export async function processVoiceTurn({
   };
 }
 
-async function maybeApplyOpenAiIntelligence({
+async function maybeApplyGeminiIntelligence({
   transcriptText,
   languageCode,
   session,
@@ -151,7 +151,7 @@ async function maybeApplyOpenAiIntelligence({
   qualification
 }) {
   try {
-    const openAiResponse = await generateLeadIntelligence({
+    const geminiResponse = await generateLeadIntelligence({
       transcriptText,
       languageCode,
       leadProfile,
@@ -159,29 +159,29 @@ async function maybeApplyOpenAiIntelligence({
       transcriptHistory: session.transcript
     });
 
-    if (!openAiResponse?.final_answer) {
+    if (!geminiResponse?.final_answer) {
       return null;
     }
 
-    const openAiDerivedDetails = buildLeadDetailsFromOpenAi({
+    const geminiDerivedDetails = buildLeadDetailsFromGemini({
       leadProfile,
-      bant: openAiResponse.bant
+      bant: geminiResponse.bant
     });
-    const mergedTurnState = mergeAndQualify(leadProfile, openAiDerivedDetails);
-    const nextQuestion = normalizeQuestion(openAiResponse.next_question) || mergedTurnState.qualification.nextQuestion;
+    const mergedTurnState = mergeAndQualify(leadProfile, geminiDerivedDetails);
+    const nextQuestion = normalizeQuestion(geminiResponse.next_question) || mergedTurnState.qualification.nextQuestion;
     const responseQualification = buildResponseQualification({
       qualification: mergedTurnState.qualification,
-      preferredScore: openAiResponse.score,
-      preferredLabel: openAiResponse.label,
+      preferredScore: geminiResponse.score,
+      preferredLabel: geminiResponse.label,
       nextQuestion
     });
 
     return {
       leadProfile: mergedTurnState.leadProfile,
       qualification: responseQualification,
-      finalAnswer: normalizeAssistantReply(openAiResponse.final_answer),
+      finalAnswer: normalizeAssistantReply(geminiResponse.final_answer),
       thinking:
-        normalizeThinking(openAiResponse.thinking) ||
+        normalizeThinking(geminiResponse.thinking) ||
         buildLeadThinking({
           leadProfile: mergedTurnState.leadProfile,
           qualification: responseQualification
@@ -189,7 +189,7 @@ async function maybeApplyOpenAiIntelligence({
       nextQuestion
     };
   } catch (error) {
-    console.warn("[voice-turn] OpenAI intelligence failed. Falling back to Sarvam chat.", error);
+    console.warn("[voice-turn] Gemini intelligence failed. Falling back to Sarvam chat.", error);
     return null;
   }
 }
@@ -221,7 +221,7 @@ function buildConversationMessages({
   ];
 }
 
-function buildLeadDetailsFromOpenAi({ leadProfile, bant }) {
+function buildLeadDetailsFromGemini({ leadProfile, bant }) {
   if (!bant) {
     return {};
   }

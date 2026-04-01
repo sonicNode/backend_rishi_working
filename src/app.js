@@ -27,7 +27,7 @@ app.get("/health", (req, res) => {
     env: {
       NODE_ENV: process.env.NODE_ENV || "(not set)",
       SARVAM_API_KEY: process.env.SARVAM_API_KEY ? "set" : "missing",
-      OPENAI_API_KEY: process.env.OPENAI_API_KEY ? "set" : "missing",
+      GEMINI_API_KEY: process.env.GEMINI_API_KEY ? "set" : "missing",
       PORT: process.env.PORT || "(not set - using default 3000)"
     }
   });

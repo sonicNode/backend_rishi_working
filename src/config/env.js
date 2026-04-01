@@ -12,9 +12,9 @@ export const env = {
   port: Number(process.env.PORT || 3000),
   sarvamApiKey: process.env.SARVAM_API_KEY || "",
   sarvamBaseUrl: process.env.SARVAM_BASE_URL || "https://api.sarvam.ai",
-  openaiApiKey: process.env.OPENAI_API_KEY || "",
-  openaiBaseUrl: process.env.OPENAI_BASE_URL || "https://api.openai.com/v1",
-  openaiModel: process.env.OPENAI_MODEL || "gpt-5.4",
+  geminiApiKey: process.env.GEMINI_API_KEY || "",
+  geminiBaseUrl: process.env.GEMINI_BASE_URL || "https://generativelanguage.googleapis.com/v1beta",
+  geminiModel: process.env.GEMINI_MODEL || "gemini-2.5-flash",
   sttModel: process.env.SARVAM_STT_MODEL || "saaras:v3",
   sttMode: process.env.SARVAM_STT_MODE || "transcribe",
   chatModel: process.env.SARVAM_CHAT_MODEL || "sarvam-m",
@@ -27,10 +27,10 @@ export const env = {
 
 export function assertRequiredEnv() {
   const sarvamConfigured = Boolean(env.sarvamApiKey);
-  const openAiConfigured = Boolean(env.openaiApiKey);
+  const geminiConfigured = Boolean(env.geminiApiKey);
 
   console.log(
-    `[env] NODE_ENV=${env.nodeEnv} | SARVAM_API_KEY=${sarvamConfigured ? "SET" : "MISSING"} | OPENAI_API_KEY=${openAiConfigured ? "SET" : "MISSING"}`
+    `[env] NODE_ENV=${env.nodeEnv} | SARVAM_API_KEY=${sarvamConfigured ? "SET" : "MISSING"} | GEMINI_API_KEY=${geminiConfigured ? "SET" : "MISSING"}`
   );
 
   if (!sarvamConfigured) {
@@ -44,7 +44,7 @@ export function assertRequiredEnv() {
     console.warn("[env] SARVAM_API_KEY missing - add it to your local .env file.");
   }
 
-  if (!openAiConfigured) {
-    console.warn("[env] OPENAI_API_KEY missing - Lead Sathi will fall back to Sarvam chat for intelligence.");
+  if (!geminiConfigured) {
+    console.warn("[env] GEMINI_API_KEY missing - Lead Sathi will fall back to Sarvam chat for intelligence.");
   }
 }
