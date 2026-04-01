@@ -736,18 +736,23 @@ function startVoiceActivityMonitor() {
       activeTurn.lastSpeechAt = 0;
     }
 
-    const lastActivityAt = Math.max(activeTurn.lastSpeechAt || 0, activeTurn.lastTranscriptAt || 0);
-    const silenceElapsed = lastActivityAt ? now - lastActivityAt : 0;
-    const silenceReached =
+    const audioSilenceElapsed = activeTurn.lastSpeechAt ? now - activeTurn.lastSpeechAt : 0;
+    const transcriptSilenceElapsed = activeTurn.lastTranscriptAt ? now - activeTurn.lastTranscriptAt : 0;
+    const audioSilenceReached =
       activeTurn.hasSpoken &&
-      lastActivityAt &&
-      silenceElapsed >= REALTIME_CONFIG.silenceMs;
+      activeTurn.lastSpeechAt &&
+      audioSilenceElapsed >= REALTIME_CONFIG.silenceMs;
 
     const transcriptSettled =
       !activeTurn.lastTranscriptAt ||
-      now - activeTurn.lastTranscriptAt >= REALTIME_CONFIG.recognitionSilenceMs;
+      transcriptSilenceElapsed >= REALTIME_CONFIG.recognitionSilenceMs;
 
-    if (silenceReached && transcriptSettled) {
+    const transcriptSilenceReached =
+      activeTurn.hasSpoken &&
+      activeTurn.lastTranscriptAt &&
+      transcriptSilenceElapsed >= REALTIME_CONFIG.recognitionSilenceMs;
+
+    if ((audioSilenceReached && transcriptSettled) || transcriptSilenceReached) {
       void finishListeningTurn("silence");
       return;
     }
@@ -1880,9 +1885,11 @@ function scheduleSpeechFinalization(reason) {
       return;
     }
 
-    const lastActivityAt = Math.max(activeTurn.lastSpeechAt || 0, activeTurn.lastTranscriptAt || 0);
+    const transcriptSilenceElapsed = activeTurn.lastTranscriptAt
+      ? Date.now() - activeTurn.lastTranscriptAt
+      : REALTIME_CONFIG.recognitionSilenceMs;
 
-    if (lastActivityAt && Date.now() - lastActivityAt < REALTIME_CONFIG.recognitionSilenceMs) {
+    if (transcriptSilenceElapsed < REALTIME_CONFIG.recognitionSilenceMs) {
       return;
     }
 
