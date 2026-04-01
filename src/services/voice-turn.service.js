@@ -23,12 +23,13 @@ export async function processVoiceTurn({
 }) {
   const resolvedSessionId = sessionId || `session-${Date.now()}`;
   const resolvedSpeaker = speaker || env.defaultSpeaker;
+  const normalizedFallbackTranscript = (fallbackTranscript || "").trim();
   let transcription = {
-    transcript: fallbackTranscript || "",
+    transcript: normalizedFallbackTranscript,
     language_code: requestedLanguageCode || env.defaultLanguageCode
   };
 
-  if (buffer?.length) {
+  if (!normalizedFallbackTranscript && buffer?.length) {
     try {
       transcription = await transcribeAudio({
         buffer,
@@ -37,16 +38,16 @@ export async function processVoiceTurn({
         languageCode: requestedLanguageCode
       });
     } catch (error) {
-      if (!fallbackTranscript) {
+      if (!normalizedFallbackTranscript) {
         throw error;
       }
     }
-  } else if (!fallbackTranscript) {
+  } else if (!buffer?.length && !normalizedFallbackTranscript) {
     throw createHttpError(400, "Audio or transcript input is required for a voice turn.");
   }
 
   const session = getSession(resolvedSessionId);
-  const transcriptText = transcription.transcript || fallbackTranscript || "";
+  const transcriptText = transcription.transcript || normalizedFallbackTranscript || "";
   const extractedDetails = extractLeadDetails(transcriptText, session.leadProfile);
   const { leadProfile, qualification } = mergeAndQualify(session.leadProfile, extractedDetails);
   const detectedLanguageCode = transcription.language_code || requestedLanguageCode || env.defaultLanguageCode;

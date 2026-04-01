@@ -390,9 +390,9 @@ function detectRole(text) {
 
 function detectBudget(text) {
   const budgetPatterns = [
-    /(?:budget(?:\s+is|\s+of)?|we can spend|we could spend|can spend|spend(?:ing)?|price(?:\s+range)?|cost(?:\s+range)?|around|about|roughly|approx(?:imately)?|under|upto|up to)\s*(?:is|of|around|about|roughly|under|upto|up to)?\s*((?:\u20B9|rs\.?|inr|\$)\s?[\d,.]+(?:\s?(?:k|thousand|lakhs?|lakh|crores?|crore|million))?|[\d,.]+\s?(?:k|thousand|lakhs?|lakh|crores?|crore|million)|(?:one|two|three|four|five|six|seven|eight|nine|ten|fifteen|twenty|thirty|forty|fifty)\s+(?:k|thousand|lakhs?|lakh|crores?|crore))/i,
-    /((?:\u20B9|rs\.?|inr)\s?[\d,.]+(?:\s?(?:k|thousand|lakhs?|lakh|crores?|crore|million))?)/i,
-    /^\s*((?:\u20B9|rs\.?|inr)?\s?[\d,.]+(?:\s?(?:k|thousand|lakhs?|lakh|crores?|crore|million))?)\s*$/i
+    /(?:budget(?:\s+is|\s+of|\s*:)?|we can spend|we could spend|can spend|spend(?:ing)?|price(?:\s+range)?|cost(?:\s+range)?|around|about|roughly|approx(?:imately)?|under|upto|up to)\s*(?:is|of|around|about|roughly|under|upto|up to)?\s*((?:\u20B9|rs\.?|inr|\$)\s?\d[\d,.]*(?:\s?(?:k|thousand|lakhs?|lakh|crores?|crore|million|m|l))?|\d[\d,.]*\s?(?:rupees|rs|lakhs?|lakh|k|thousand|crores?|crore|million)|(?:one|two|three|four|five|six|seven|eight|nine|ten|fifteen|twenty|thirty|forty|fifty)\s+(?:k|thousand|lakhs?|lakh|crores?|crore))/i,
+    /\b((?:\u20B9|rs\.?|inr)\s?\d[\d,.]*(?:\s?(?:k|thousand|lakhs?|lakh|crores?|crore|million|m|l))?|\d[\d,.]*\s?(?:rupees|rs|lakhs?|lakh|k|thousand|crores?|crore|million))\b/i,
+    /\b(?:budget(?:\s+is|\s+of|\s*:)?\s*)?((?:\u20B9\s?)?\d[\d,.]*\s?(?:k|m|l|lakhs?|lakh|thousand|crores?|crore)?)\b/i
   ];
 
   for (const pattern of budgetPatterns) {
@@ -409,6 +409,10 @@ function detectBudget(text) {
 function detectTimeline(text) {
   if (/\b(asap|urgent|immediately|right away|right now|at the earliest)\b/i.test(text)) {
     return "urgent";
+  }
+
+  if (/\b(later|next month|next quarter|whenever|sometime|not urgent|flexible)\b/i.test(text)) {
+    return "flexible";
   }
 
   const directMatch = text.match(
@@ -428,7 +432,7 @@ function detectTimeline(text) {
 
 function detectAuthority(text, role) {
   if (
-    /(?:i decide|i'll decide|i make the decision|i take the final call|final decision is mine|i approve|i sign off|i am the owner|i'm the owner|i am the founder|i'm the founder)/i.test(
+    /(?:i am (?:the )?decision maker|i'm (?:the )?decision maker|i decide|i can decide|i'll decide|i make the decision|i take the final call|final decision is mine|i approve|i sign off|i am the owner|i'm the owner|i am the founder|i'm the founder)/i.test(
       text
     ) ||
     isDecisionMakerRole(role)
@@ -451,7 +455,7 @@ function detectNeed(text, existingNeed) {
   const needPatterns = [
     /(?:but|and)\s+we (?:want|need|are looking for|want to|need to)\s+(.+?)(?=[.?!]|$)/i,
     /(?:but|and)\s+i (?:want|need|am looking for|want to|need to)\s+(.+?)(?=[.?!]|$)/i,
-    /(?:looking for|need help with|need support with|need a|need an|need|want to|want|looking to|trying to|interested in|exploring|evaluating|solution for|tool for|platform for)\s+(.+?)(?=[.?!]|$)/i,
+    /(?:looking for|need help with|need support with|need a|need an|need|want to|want|looking to|trying to|interested in|exploring|evaluating|require|solution for|tool for|platform for)\s+(.+?)(?=[.?!]|$)/i,
     /(?:we are looking for|we need|we want|we're trying to|we are trying to)\s+(.+?)(?=[.?!]|$)/i
   ];
   let bestCandidate = null;
@@ -462,7 +466,7 @@ function detectNeed(text, existingNeed) {
     if (match?.[1]) {
       const candidate = cleanupNeedValue(match[1]);
 
-      if (candidate && candidate.length >= 4 && isValidNeedCandidate(candidate)) {
+      if (candidate && (candidate.length >= 4 || countNeedKeywords(candidate) > 0) && isValidNeedCandidate(candidate)) {
         bestCandidate = bestCandidate ? chooseNeedValue(bestCandidate, candidate) : candidate;
       }
     }
@@ -503,12 +507,16 @@ function normalizeBudgetValue(value) {
 
 function cleanupNeedValue(value) {
   return cleanupValue(value)
+    .split(/[.?!]/)[0]
     .replace(/^(?:to\s+)?(?:get|have|set up)\s+/i, "")
     .replace(/^to\s+/i, "")
     .replace(/\bplease\b/gi, "")
     .replace(/\bkind of\b/gi, "")
+    .replace(/\b(?:budget|price|timeline|urgent|asap|immediately)\b.*$/i, "")
     .replace(/\b(?:this week|next week|this month|next month|urgent|asap)\b$/i, "")
     .replace(/\s{2,}/g, " ")
+    .trim()
+    .replace(/[.,;:]+$/, "")
     .trim();
 }
 

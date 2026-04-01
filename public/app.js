@@ -34,11 +34,13 @@ const DEFAULT_BANT = {
 };
 const REALTIME_CONFIG = {
   recorderTimesliceMs: 250,
-  silenceMs: 850,
+  silenceMs: 700,
   minSpeechMs: 320,
   vadThreshold: 0.025,
-  partialDebounceMs: 140,
-  autoListenDelayMs: 260,
+  bargeInThreshold: 0.04,
+  bargeInMinSpeechMs: 260,
+  partialDebounceMs: 90,
+  autoListenDelayMs: 80,
   websocketTimeoutMs: 1800
 };
 
@@ -54,6 +56,8 @@ let speechRecognition = null;
 let speechRecognitionActive = false;
 let liveUserMessage = null;
 let vadFrameId = 0;
+let bargeInFrameId = 0;
+let bargeInSpeechStartedAt = 0;
 let autoListenTimer = 0;
 let shouldReleasePipeline = false;
 let pendingAutoStartAfterSpeech = false;
@@ -67,6 +71,7 @@ let isAssistantSpeaking = false;
 let isFinalizingTurn = false;
 let lastPartialSent = "";
 let lastPartialSentAt = 0;
+let committedUserTurnText = "";
 
 sessionIdInput.value = `lead-session-${Date.now()}`;
 startButton.setAttribute("aria-label", "Start live call");
@@ -127,6 +132,7 @@ async function startListeningTurn() {
   }
 
   window.clearTimeout(autoListenTimer);
+  stopBargeInMonitor();
   await ensureRealtimeReady();
 
   if (assistantPlayback && !assistantPlayback.paused) {
@@ -140,6 +146,7 @@ async function startListeningTurn() {
   const mimeType = mediaRecorder?.mimeType || getSupportedMimeType() || "audio/webm";
   activeTurn = createTurnState(mimeType);
   activeTurn.streamOverSocket = isRealtimeSocketOpen();
+  committedUserTurnText = "";
   lastPartialSent = "";
   lastPartialSentAt = 0;
 
@@ -174,6 +181,7 @@ function stopLiveConversation() {
   callModeEnabled = false;
   pendingAutoStartAfterSpeech = false;
   window.clearTimeout(autoListenTimer);
+  stopBargeInMonitor();
   sendRealtimeMessage({ type: "listen_abort" });
 
   if (assistantPlayback && !assistantPlayback.paused) {
@@ -423,13 +431,20 @@ function handleRecorderStop() {
   activeTurn = null;
   isListening = false;
 
+  if (completedTurn?.audioChunks?.length) {
+    previewAudio(userPlayback, new Blob(completedTurn.audioChunks, { type: completedTurn.mimeType }));
+  }
+
   if (shouldReleasePipeline) {
     releaseVoicePipeline();
   }
 
   if (!completedTurn || !completedTurn.shouldProcess) {
-    isProcessing = false;
-    isFinalizingTurn = false;
+    if (!completedTurn?.realtimeProcessingStarted) {
+      isProcessing = false;
+      isFinalizingTurn = false;
+    }
+
     updateActionButtons();
     return;
   }
@@ -454,12 +469,27 @@ async function finishListeningTurn(reason) {
   activeTurn.shouldProcess = true;
   activeTurn.stopReason = reason;
   publishPartialTranscript(activeTurn.partialTranscript, { final: true, force: true });
+  applyDeterministicLeadSignals(activeTurn.partialTranscript, { syncViews: true });
+
+  if (activeTurn.streamOverSocket && activeTurn.partialTranscript.trim()) {
+    activeTurn.realtimeProcessingStarted = sendRealtimeMessage({ type: "speech_end" });
+    activeTurn.shouldProcess = !activeTurn.realtimeProcessingStarted;
+  }
+
   resetStatus("Thinking...", "processing");
   updateActionButtons();
   stopVoiceActivityMonitor();
   stopSpeechRecognition();
 
   if (mediaRecorder?.state === "recording") {
+    if (typeof mediaRecorder.requestData === "function") {
+      try {
+        mediaRecorder.requestData();
+      } catch (error) {
+        console.warn(error);
+      }
+    }
+
     mediaRecorder.stop();
     return;
   }
@@ -473,10 +503,6 @@ async function finishListeningTurn(reason) {
 async function processCompletedTurn(turn) {
   const audioBlob = new Blob(turn.audioChunks, { type: turn.mimeType });
 
-  if (audioBlob.size > 0) {
-    previewAudio(userPlayback, audioBlob);
-  }
-
   if (!turn.hasSpoken && !turn.partialTranscript.trim() && audioBlob.size === 0) {
     isProcessing = false;
     isFinalizingTurn = false;
@@ -489,7 +515,8 @@ async function processCompletedTurn(turn) {
     return;
   }
 
-  if (turn.streamOverSocket && sendRealtimeMessage({ type: "speech_end" })) {
+  if (!turn.realtimeProcessingStarted && turn.streamOverSocket && sendRealtimeMessage({ type: "speech_end" })) {
+    turn.realtimeProcessingStarted = true;
     resetStatus("Thinking...", "processing");
     updateActionButtons();
     return;
@@ -570,7 +597,7 @@ function handleRecognitionEnd() {
 
   window.setTimeout(() => {
     startSpeechRecognition();
-  }, 140);
+  }, 40);
 }
 
 function handleRecognitionError(error) {
@@ -674,18 +701,94 @@ function stopVoiceActivityMonitor() {
   vadFrameId = 0;
 }
 
+function startBargeInMonitor() {
+  if (!callModeEnabled || !isAssistantSpeaking || !analyserNode || !analyserData) {
+    return;
+  }
+
+  stopBargeInMonitor();
+
+  const tick = () => {
+    if (!callModeEnabled || !isAssistantSpeaking || !analyserNode || !analyserData) {
+      return;
+    }
+
+    analyserNode.getByteTimeDomainData(analyserData);
+
+    const level = getAudioLevel(analyserData);
+    const now = Date.now();
+
+    if (level > REALTIME_CONFIG.bargeInThreshold) {
+      if (!bargeInSpeechStartedAt) {
+        bargeInSpeechStartedAt = now;
+      }
+
+      if (now - bargeInSpeechStartedAt >= REALTIME_CONFIG.bargeInMinSpeechMs) {
+        interruptAssistantPlayback();
+        return;
+      }
+    } else {
+      bargeInSpeechStartedAt = 0;
+    }
+
+    bargeInFrameId = window.requestAnimationFrame(tick);
+  };
+
+  bargeInFrameId = window.requestAnimationFrame(tick);
+}
+
+function stopBargeInMonitor() {
+  bargeInSpeechStartedAt = 0;
+
+  if (!bargeInFrameId) {
+    return;
+  }
+
+  window.cancelAnimationFrame(bargeInFrameId);
+  bargeInFrameId = 0;
+}
+
+function interruptAssistantPlayback() {
+  if (!callModeEnabled || !isAssistantSpeaking) {
+    return;
+  }
+
+  pendingAutoStartAfterSpeech = false;
+  pendingAssistantAudio = null;
+  stopBargeInMonitor();
+  isAssistantSpeaking = false;
+
+  try {
+    assistantPlayback.pause();
+    assistantPlayback.currentTime = 0;
+  } catch (error) {
+    console.warn(error);
+  }
+
+  void startListeningTurn().catch((error) => {
+    console.error(error);
+    resetStatus("Tap Mic to continue", "idle");
+    callModeEnabled = false;
+    updateActionButtons();
+  });
+}
+
 function renderRoundtrip(data, options = {}) {
   const finalAnswer = data.final_answer || data.assistantText || "";
   const thinking = data.thinking || "";
-  const score = Number.isFinite(data.score) ? data.score : data.qualification?.scoreOutOf10 || 0;
-  const label = data.label || data.qualification?.label || "Cold \u2744\uFE0F";
-  const summary = data.summary || data.qualification?.summary || "We'll keep updating the lead score as details come in.";
-  const nextQuestion = data.next_question || data.qualification?.nextQuestion || "";
+  const serverScore = Number.isFinite(data.score) ? data.score : data.qualification?.scoreOutOf10 || 0;
+  const serverBant = data.bant || data.qualification?.bant || {};
 
-  bantState = {
-    ...DEFAULT_BANT,
-    ...(data.bant || data.qualification?.bant || {})
-  };
+  applyDeterministicLeadSignals(data.userTranscript, { syncViews: false });
+  bantState = mergeBantState(bantState, serverBant);
+
+  const score = Math.max(serverScore, calculateScore(bantState));
+  const label = score > serverScore ? getLabel(score) : data.label || data.qualification?.label || getLabel(score);
+  const nextQuestion = data.next_question || data.qualification?.nextQuestion || getNextQuestion(bantState);
+  const summary =
+    score > serverScore
+      ? buildLeadSummary(bantState, score)
+      : data.summary || data.qualification?.summary || "We'll keep updating the lead score as details come in.";
 
   finalizeLiveUserMessage(data.userTranscript);
   appendMessage("assistant", finalAnswer, { thinking });
@@ -701,6 +804,10 @@ function renderRoundtrip(data, options = {}) {
   qualificationView.textContent = JSON.stringify(
     {
       ...data.qualification,
+      bant: bantState,
+      scoreOutOf10: score,
+      label,
+      summary,
       nextQuestion
     },
     null,
@@ -790,6 +897,7 @@ function finalizeLiveUserMessage(text) {
       liveUserMessage.remove();
     } else {
       updateMessageElement(liveUserMessage, "you", normalizedText);
+      committedUserTurnText = normalizedText;
     }
 
     scrollConversationToLatest(liveUserMessage);
@@ -798,6 +906,11 @@ function finalizeLiveUserMessage(text) {
   }
 
   if (normalizedText) {
+    if (committedUserTurnText === normalizedText) {
+      return;
+    }
+
+    committedUserTurnText = normalizedText;
     appendMessage("you", normalizedText);
   }
 }
@@ -839,6 +952,314 @@ function renderBantBoard() {
     item.append(fieldLabel, fieldValue);
     bantBoard.append(item);
   });
+}
+
+function applyDeterministicLeadSignals(text, { syncViews = false } = {}) {
+  const extractedBant = extractDeterministicBant(text);
+  const mergedBant = mergeBantState(bantState, extractedBant);
+  const hasChanged = hasBantChange(bantState, mergedBant);
+
+  if (!hasChanged && !syncViews) {
+    return;
+  }
+
+  bantState = mergedBant;
+
+  const score = calculateScore(bantState);
+  const label = getLabel(score);
+  const nextQuestion = getNextQuestion(bantState);
+  const summary = buildLeadSummary(bantState, score);
+
+  renderLeadScore({
+    score,
+    label,
+    summary,
+    nextQuestion
+  });
+  renderBantBoard();
+
+  if (syncViews) {
+    qualificationView.textContent = JSON.stringify(
+      {
+        source: "local-deterministic",
+        bant: bantState,
+        scoreOutOf10: score,
+        label,
+        nextQuestion,
+        summary
+      },
+      null,
+      2
+    );
+  }
+}
+
+function extractDeterministicBant(input) {
+  const text = normalizeLeadText(input);
+
+  if (!text) {
+    return {};
+  }
+
+  const nextBant = {};
+  const budgetMatch = text.match(
+    /(?:budget(?:\s+is|\s+of|\s*:)?\s*)?(\u20B9?\s?\d[\d,.]*\s?[kKmMlL]?|\d+\s?(?:rupees|rs|lakhs?|lakh|k|thousand))/i
+  );
+  const needValue = extractNeedHint(text);
+  const timelineValue = extractTimelineHint(text);
+  const authorityValue = extractAuthorityHint(text);
+
+  if (budgetMatch?.[1]) {
+    nextBant.budget = normalizeBantText(budgetMatch[1])
+      .replace(/\brs\b\.?/i, "Rs")
+      .replace(/\s{2,}/g, " ");
+  }
+
+  if (timelineValue) {
+    nextBant.timeline = timelineValue;
+  }
+
+  if (needValue) {
+    nextBant.need = needValue;
+  } else if (/\b(i need|i want|looking for|require|we need|we want)\b/i.test(text)) {
+    nextBant.need = true;
+  }
+
+  if (authorityValue) {
+    nextBant.authority = authorityValue;
+  }
+
+  return nextBant;
+}
+
+function extractNeedHint(text) {
+  const needPatterns = [
+    /(?:i need|i want|looking for|require|looking to|we need|we want|we are looking for)\s+(.+?)(?=[.?!]|$)/i,
+    /(?:need help with|need support with|solution for|tool for|platform for)\s+(.+?)(?=[.?!]|$)/i
+  ];
+
+  for (const pattern of needPatterns) {
+    const match = text.match(pattern);
+
+    if (!match?.[1]) {
+      continue;
+    }
+
+    const candidate = normalizeBantText(match[1])
+      .replace(/\b(?:urgently|asap|immediately|this week|next week|this month|next month)\b/gi, "")
+      .replace(/\b(?:budget|price|timeline).*/i, "")
+      .trim();
+
+    if (candidate.length >= 4) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function extractTimelineHint(text) {
+  if (/\b(urgent|asap|immediately|this week)\b/i.test(text)) {
+    return "urgent";
+  }
+
+  const specificMatch = text.match(/\b(today|tomorrow|next week|this month|next month)\b/i);
+
+  if (specificMatch?.[1]) {
+    return specificMatch[1].toLowerCase();
+  }
+
+  if (/\b(month|later|next month|next quarter|whenever|flexible)\b/i.test(text)) {
+    return "flexible";
+  }
+
+  return null;
+}
+
+function extractAuthorityHint(text) {
+  if (
+    /\b(i am (?:the )?decision maker|i'm (?:the )?decision maker|i decide|i can decide|i am owner|i'm owner|i am the owner|i'm the owner|my company)\b/i.test(
+      text
+    )
+  ) {
+    return "decision-maker";
+  }
+
+  if (/\b(need approval|not the decision maker|my manager decides|my boss decides|someone else decides)\b/i.test(text)) {
+    return "needs-approval";
+  }
+
+  return null;
+}
+
+function mergeBantState(currentBant, incomingBant) {
+  const mergedBant = {
+    ...currentBant
+  };
+
+  if (incomingBant.budget) {
+    mergedBant.budget = choosePreferredTextValue(mergedBant.budget, incomingBant.budget);
+  }
+
+  if (incomingBant.timeline) {
+    mergedBant.timeline = chooseTimelineValue(mergedBant.timeline, incomingBant.timeline);
+  }
+
+  if (incomingBant.need) {
+    mergedBant.need = chooseNeedValue(mergedBant.need, incomingBant.need);
+  }
+
+  if (incomingBant.authority) {
+    mergedBant.authority = chooseAuthorityValue(mergedBant.authority, incomingBant.authority);
+  }
+
+  return mergedBant;
+}
+
+function choosePreferredTextValue(existingValue, incomingValue) {
+  if (!incomingValue) {
+    return existingValue;
+  }
+
+  if (!existingValue) {
+    return incomingValue;
+  }
+
+  return String(incomingValue).length > String(existingValue).length ? incomingValue : existingValue;
+}
+
+function chooseTimelineValue(existingValue, incomingValue) {
+  if (!incomingValue) {
+    return existingValue;
+  }
+
+  if (!existingValue || incomingValue === "urgent") {
+    return incomingValue;
+  }
+
+  if (existingValue === "flexible" && incomingValue !== "flexible") {
+    return incomingValue;
+  }
+
+  return existingValue;
+}
+
+function chooseNeedValue(existingValue, incomingValue) {
+  if (!incomingValue) {
+    return existingValue;
+  }
+
+  if (!existingValue) {
+    return incomingValue === true ? "Requirement shared" : incomingValue;
+  }
+
+  if (incomingValue === true) {
+    return existingValue;
+  }
+
+  return choosePreferredTextValue(existingValue, incomingValue);
+}
+
+function chooseAuthorityValue(existingValue, incomingValue) {
+  if (!incomingValue) {
+    return existingValue;
+  }
+
+  if (existingValue === "decision-maker" || incomingValue === "decision-maker") {
+    return "decision-maker";
+  }
+
+  return existingValue || incomingValue;
+}
+
+function hasBantChange(previousBant, nextBant) {
+  return BANT_FIELDS.some(({ key }) => previousBant[key] !== nextBant[key]);
+}
+
+function calculateScore(bant) {
+  let score = 0;
+
+  if (bant.budget) {
+    score += 3;
+  }
+
+  if (bant.authority) {
+    score += 2;
+  }
+
+  if (bant.need) {
+    score += 3;
+  }
+
+  if (bant.timeline) {
+    score += 2;
+  }
+
+  return score;
+}
+
+function getLabel(score) {
+  if (score >= 8) {
+    return "Hot \u{1F525}";
+  }
+
+  if (score >= 5) {
+    return "Warm \u{1F642}";
+  }
+
+  return "Cold \u2744\uFE0F";
+}
+
+function getNextQuestion(bant) {
+  const nextField = BANT_FIELDS.find(({ key }) => !bant[key])?.key;
+
+  if (!nextField) {
+    return null;
+  }
+
+  if (nextField === "need") {
+    return "What are you looking to solve right now?";
+  }
+
+  if (nextField === "budget") {
+    return "What budget range do you have in mind for this?";
+  }
+
+  if (nextField === "authority") {
+    return "Will you be the one taking the final call on this?";
+  }
+
+  return "What's your expected timeline for getting started?";
+}
+
+function buildLeadSummary(bant, score) {
+  const missingFields = BANT_FIELDS.filter(({ key }) => !bant[key]).map(({ key }) => key);
+
+  if (score >= 8) {
+    return "Strong lead with clear need, budget, and urgency.";
+  }
+
+  if (score >= 5) {
+    if (missingFields.length === 1) {
+      return `Decent lead, needs clarity on ${missingFields[0]}.`;
+    }
+
+    return "Promising lead, but a couple of BANT details are still missing.";
+  }
+
+  if (!bant.need) {
+    return "Early lead, still understanding the requirement.";
+  }
+
+  return "Early-stage lead. We still need a few qualification details.";
+}
+
+function normalizeLeadText(text) {
+  return (text || "").replace(/\s+/g, " ").trim();
+}
+
+function normalizeBantText(value) {
+  return (value || "").replace(/\s+/g, " ").trim().replace(/[.,;:]+$/, "");
 }
 
 function initializeWelcomeExperience() {
@@ -937,10 +1358,12 @@ function handleAssistantPlaybackStart() {
   isAssistantSpeaking = true;
   resetStatus("Speaking...", "speaking");
   updateActionButtons();
+  startBargeInMonitor();
 }
 
 function handleAssistantPlaybackEnd() {
   isAssistantSpeaking = false;
+  stopBargeInMonitor();
   updateActionButtons();
 
   if (pendingAutoStartAfterSpeech) {
@@ -963,6 +1386,7 @@ function handleAssistantPlaybackPause() {
   }
 
   isAssistantSpeaking = false;
+  stopBargeInMonitor();
   updateActionButtons();
 
   if (!callModeEnabled && !isProcessing) {
@@ -997,6 +1421,7 @@ function publishPartialTranscript(transcript, { final = false, force = false } =
   }
 
   upsertLiveUserMessage(normalizedTranscript);
+  applyDeterministicLeadSignals(normalizedTranscript, { syncViews: true });
 
   if (!isRealtimeSocketOpen()) {
     return;
@@ -1073,6 +1498,7 @@ function isRealtimeSocketOpen() {
 function releaseVoicePipeline() {
   shouldReleasePipeline = false;
   stopVoiceActivityMonitor();
+  stopBargeInMonitor();
   stopSpeechRecognition();
 
   if (mediaStream) {
@@ -1093,6 +1519,7 @@ function releaseVoicePipeline() {
 function teardownRealtimeExperience() {
   window.clearTimeout(autoListenTimer);
   stopVoiceActivityMonitor();
+  stopBargeInMonitor();
   stopSpeechRecognition();
 
   if (realtimeSocket && realtimeSocket.readyState <= WebSocket.OPEN) {
@@ -1122,6 +1549,7 @@ function createTurnState(mimeType) {
     audioChunks: [],
     partialTranscript: "",
     streamOverSocket: false,
+    realtimeProcessingStarted: false,
     shouldProcess: false,
     stopReason: "silence",
     voiceStartedAt: 0,
