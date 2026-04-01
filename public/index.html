@@ -23,32 +23,36 @@
           <span id="statusBadge" class="status-badge idle">Idle</span>
         </div>
 
-        <label class="field">
-          <span>Session ID</span>
-          <input id="sessionId" type="text" placeholder="lead-demo-session" />
-        </label>
-
-        <div class="grid">
+        <div class="config-store hidden" aria-hidden="true">
           <label class="field">
-            <span>Language</span>
-            <select id="languageCode">
-              <option value="en-IN">English (India)</option>
-              <option value="hi-IN">Hindi</option>
-              <option value="bn-IN">Bengali</option>
-              <option value="ta-IN">Tamil</option>
-              <option value="te-IN">Telugu</option>
-              <option value="kn-IN">Kannada</option>
-              <option value="ml-IN">Malayalam</option>
-              <option value="mr-IN">Marathi</option>
-              <option value="gu-IN">Gujarati</option>
-              <option value="pa-IN">Punjabi</option>
-            </select>
+            <span>Session ID</span>
+            <input id="sessionId" type="text" placeholder="lead-demo-session" />
           </label>
 
-          <label class="field">
-            <span>Speaker</span>
-            <input id="speaker" type="text" value="shubh" placeholder="shubh" />
-          </label>
+          <div class="grid">
+            <label class="field">
+              <span>Language</span>
+              <select id="languageCode">
+                <option value="en-IN">English (India)</option>
+                <option value="hi-IN">Hindi</option>
+                <option value="bn-IN">Bengali</option>
+                <option value="ta-IN">Tamil</option>
+                <option value="te-IN">Telugu</option>
+                <option value="kn-IN">Kannada</option>
+                <option value="ml-IN">Malayalam</option>
+                <option value="mr-IN">Marathi</option>
+                <option value="gu-IN">Gujarati</option>
+                <option value="pa-IN">Punjabi</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>Speaker</span>
+              <input id="speaker" type="text" value="shubh" placeholder="shubh" />
+            </label>
+          </div>
+
+          <button id="stopButton" class="secondary" disabled>Stop &amp; Send</button>
         </div>
 
         <div class="actions">
@@ -60,7 +64,6 @@
               </div>
             </div>
           </div>
-          <button id="stopButton" class="secondary" disabled>Stop & Send</button>
         </div>
 
         <audio id="userPlayback" class="audio-player hidden"></audio>

@@ -95,6 +95,11 @@ initializeWelcomeExperience();
 startWaveformLoop();
 
 startButton.addEventListener("click", () => {
+  if (callModeEnabled || isListening || isProcessing || isAssistantSpeaking) {
+    stopLiveConversation();
+    return;
+  }
+
   void beginLiveConversation({ autoAttempt: false });
 });
 stopButton.addEventListener("click", () => {
@@ -1831,10 +1836,17 @@ function getFilenameForMimeType(mimeType = "") {
 }
 
 function updateActionButtons() {
-  startButton.disabled = isListening || isProcessing || isAssistantSpeaking;
-  stopButton.disabled = !callModeEnabled && !isListening && !isAssistantSpeaking && !mediaStream;
-  stopButton.textContent = isListening ? "Stop & Send" : "End Live Mode";
-  startButton.setAttribute("aria-label", callModeEnabled ? "Resume listening" : "Start live call");
+  const liveModeActive = callModeEnabled || isListening || isProcessing || isAssistantSpeaking;
+
+  startButton.disabled = false;
+  startButton.classList.toggle("is-active", liveModeActive);
+  startButton.setAttribute("aria-label", liveModeActive ? "End live mode" : "Start live mode");
+  startButton.title = liveModeActive ? "End live mode" : "Start live mode";
+
+  if (stopButton) {
+    stopButton.disabled = true;
+    stopButton.textContent = isListening ? "Stop & Send" : "End Live Mode";
+  }
 }
 
 function scrollConversationToLatest(target) {

@@ -176,12 +176,13 @@ body::after {
   bottom: 16px;
   z-index: 20;
   transform: translateX(-50%);
-  width: min(1240px, calc(100% - 24px));
-  padding: 14px;
+  width: min(420px, calc(100% - 24px));
+  padding: 14px 16px 16px;
   display: grid;
-  grid-template-columns: minmax(200px, 1.4fr) minmax(220px, 1fr) auto;
-  gap: 12px 14px;
-  align-items: end;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  justify-items: center;
+  align-items: center;
   background: rgba(255, 255, 255, 0.9);
   border: 1px solid var(--border-strong);
   border-radius: 30px;
@@ -190,9 +191,9 @@ body::after {
 }
 
 .controls-panel .panel-header {
-  grid-column: 1 / -1;
   margin-bottom: 0;
-  padding: 0 4px;
+  width: 100%;
+  padding: 0 2px;
 }
 
 .controls-panel .panel-header h2 {
@@ -289,6 +290,10 @@ button {
   background: #ffffff;
 }
 
+.config-store {
+  width: 100%;
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -297,18 +302,20 @@ button {
 
 .actions {
   display: flex;
-  align-items: flex-end;
-  justify-content: flex-end;
-  gap: 14px;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
 }
 
 .mic-container {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: center;
   gap: 10px;
-  min-width: 220px;
+  width: 100%;
+  min-width: 0;
 }
 
 .voice-stage {
@@ -403,6 +410,12 @@ button:disabled {
   box-shadow: 0 14px 34px rgba(79, 70, 229, 0.22);
   font-size: 0;
   flex: 0 0 auto;
+}
+
+.primary.is-active {
+  box-shadow:
+    0 16px 36px rgba(79, 70, 229, 0.28),
+    0 0 0 8px rgba(79, 70, 229, 0.08);
 }
 
 .primary::before {
@@ -701,7 +714,7 @@ body:has(.status-badge.recording) .primary {
 
 @media (max-width: 1080px) {
   body {
-    padding-bottom: 290px;
+    padding-bottom: 250px;
   }
 
   .app-shell {
@@ -727,21 +740,14 @@ body:has(.status-badge.recording) .primary {
   }
 
   .controls-panel {
-    width: min(960px, calc(100% - 20px));
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  }
-
-  .actions {
-    grid-column: 1 / -1;
-    justify-content: flex-start;
-    align-items: center;
+    width: min(420px, calc(100% - 20px));
   }
 }
 
 @media (max-width: 760px) {
   body {
     padding-top: 16px;
-    padding-bottom: 388px;
+    padding-bottom: 232px;
   }
 
   .app-shell {
@@ -760,16 +766,11 @@ body:has(.status-badge.recording) .primary {
 
   .controls-panel {
     bottom: 10px;
-    width: calc(100% - 16px);
-    padding: 12px;
+    width: min(360px, calc(100% - 16px));
+    padding: 12px 14px 14px;
     grid-template-columns: 1fr;
     gap: 10px;
     border-radius: 24px;
-  }
-
-  .controls-panel .panel-header,
-  .actions {
-    grid-column: 1;
   }
 
   .grid,
@@ -778,19 +779,12 @@ body:has(.status-badge.recording) .primary {
   }
 
   .actions {
-    flex-direction: column;
-    align-items: stretch;
-    justify-content: stretch;
+    justify-content: center;
   }
 
   .primary {
     width: 64px;
     height: 64px;
-  }
-
-  .mic-container {
-    width: 100%;
-    min-width: 0;
   }
 
   .voice-stage {
@@ -801,12 +795,6 @@ body:has(.status-badge.recording) .primary {
   .waveform-canvas {
     min-height: 60px;
     height: 60px;
-  }
-
-  .secondary {
-    flex: 1 1 auto;
-    min-height: 60px;
-    font-size: 0.96rem;
   }
 
   .message-card {
