@@ -12,6 +12,8 @@ const bantBoard = document.querySelector("#bantBoard");
 const sessionIdInput = document.querySelector("#sessionId");
 const languageSelect = document.querySelector("#languageCode");
 const speakerInput = document.querySelector("#speaker");
+const voiceStage = document.querySelector("#voiceStage");
+const waveformCanvas = document.querySelector("#waveformCanvas");
 const userPlayback = document.querySelector("#userPlayback");
 const assistantPlayback = document.querySelector("#assistantPlayback");
 const messageTemplate = document.querySelector("#messageTemplate");
@@ -33,14 +35,16 @@ const DEFAULT_BANT = {
   timeline: null
 };
 const REALTIME_CONFIG = {
-  recorderTimesliceMs: 250,
-  silenceMs: 700,
-  minSpeechMs: 320,
-  vadThreshold: 0.025,
-  bargeInThreshold: 0.04,
-  bargeInMinSpeechMs: 260,
-  partialDebounceMs: 90,
-  autoListenDelayMs: 80,
+  recorderTimesliceMs: 180,
+  silenceMs: 620,
+  minSpeechMs: 300,
+  vadThreshold: 0.045,
+  bargeInThreshold: 0.075,
+  bargeInMinSpeechMs: 240,
+  partialDebounceMs: 60,
+  autoListenDelayMs: 40,
+  noiseFloorMargin: 0.035,
+  waveformBars: 20,
   websocketTimeoutMs: 1800
 };
 
@@ -49,6 +53,7 @@ let mediaStream = null;
 let audioContext = null;
 let analyserNode = null;
 let analyserData = null;
+let waveformContext = waveformCanvas?.getContext("2d") || null;
 let realtimeSocket = null;
 let realtimeConnectPromise = null;
 let realtimeAvailable = typeof window.WebSocket !== "undefined";
@@ -72,6 +77,9 @@ let isFinalizingTurn = false;
 let lastPartialSent = "";
 let lastPartialSentAt = 0;
 let committedUserTurnText = "";
+let waveformFrameId = 0;
+let waveformPeaks = [];
+let audioMetrics = createAudioMetrics();
 
 sessionIdInput.value = `lead-session-${Date.now()}`;
 startButton.setAttribute("aria-label", "Start live call");
@@ -84,6 +92,7 @@ renderLeadScore({
 renderBantBoard();
 updateActionButtons();
 initializeWelcomeExperience();
+startWaveformLoop();
 
 startButton.addEventListener("click", () => {
   void beginLiveConversation({ autoAttempt: false });
@@ -99,6 +108,7 @@ document.addEventListener("keydown", consumePendingAssistantAudio);
 languageSelect.addEventListener("change", handleConfigChange);
 speakerInput.addEventListener("change", handleConfigChange);
 sessionIdInput.addEventListener("change", handleConfigChange);
+window.addEventListener("resize", syncWaveformCanvasSize);
 window.addEventListener("beforeunload", teardownRealtimeExperience);
 
 async function beginLiveConversation({ autoAttempt }) {
@@ -239,10 +249,11 @@ async function ensureMediaPipeline() {
     const sourceNode = audioContext.createMediaStreamSource(mediaStream);
 
     analyserNode = audioContext.createAnalyser();
-    analyserNode.fftSize = 2048;
-    analyserNode.smoothingTimeConstant = 0.82;
-    analyserData = new Uint8Array(analyserNode.fftSize);
+    analyserNode.fftSize = 256;
+    analyserNode.smoothingTimeConstant = 0.78;
+    analyserData = new Uint8Array(analyserNode.frequencyBinCount);
     sourceNode.connect(analyserNode);
+    audioMetrics = createAudioMetrics();
   }
 
   const mimeType = getSupportedMimeType();
@@ -641,23 +652,22 @@ function stopSpeechRecognition() {
 }
 
 function startVoiceActivityMonitor() {
-  if (!analyserNode || !analyserData || !activeTurn) {
+  if (!activeTurn) {
     return;
   }
 
   stopVoiceActivityMonitor();
 
   const tick = () => {
-    if (!analyserNode || !analyserData || !activeTurn || !isListening) {
+    if (!activeTurn || !isListening) {
       return;
     }
 
-    analyserNode.getByteTimeDomainData(analyserData);
-
-    const level = getAudioLevel(analyserData);
+    const level = getCurrentAudioLevel();
+    const threshold = getDynamicSpeechThreshold();
     const now = Date.now();
 
-    if (level > REALTIME_CONFIG.vadThreshold) {
+    if (level > threshold) {
       if (!activeTurn.voiceStartedAt) {
         activeTurn.voiceStartedAt = now;
       }
@@ -702,23 +712,22 @@ function stopVoiceActivityMonitor() {
 }
 
 function startBargeInMonitor() {
-  if (!callModeEnabled || !isAssistantSpeaking || !analyserNode || !analyserData) {
+  if (!callModeEnabled || !isAssistantSpeaking) {
     return;
   }
 
   stopBargeInMonitor();
 
   const tick = () => {
-    if (!callModeEnabled || !isAssistantSpeaking || !analyserNode || !analyserData) {
+    if (!callModeEnabled || !isAssistantSpeaking) {
       return;
     }
 
-    analyserNode.getByteTimeDomainData(analyserData);
-
-    const level = getAudioLevel(analyserData);
+    const level = getCurrentAudioLevel();
+    const threshold = Math.max(REALTIME_CONFIG.bargeInThreshold, getDynamicSpeechThreshold() + 0.018);
     const now = Date.now();
 
-    if (level > REALTIME_CONFIG.bargeInThreshold) {
+    if (level > threshold) {
       if (!bargeInSpeechStartedAt) {
         bargeInSpeechStartedAt = now;
       }
@@ -1514,6 +1523,8 @@ function releaseVoicePipeline() {
   analyserNode = null;
   analyserData = null;
   mediaRecorder = null;
+  audioMetrics = createAudioMetrics();
+  waveformPeaks = waveformPeaks.map(() => 0);
 }
 
 function teardownRealtimeExperience() {
@@ -1521,12 +1532,223 @@ function teardownRealtimeExperience() {
   stopVoiceActivityMonitor();
   stopBargeInMonitor();
   stopSpeechRecognition();
+  stopWaveformLoop();
 
   if (realtimeSocket && realtimeSocket.readyState <= WebSocket.OPEN) {
     realtimeSocket.close();
   }
 
   releaseVoicePipeline();
+}
+
+function startWaveformLoop() {
+  if (!waveformCanvas || !waveformContext || waveformFrameId) {
+    return;
+  }
+
+  const draw = () => {
+    waveformFrameId = window.requestAnimationFrame(draw);
+    renderWaveformFrame();
+  };
+
+  syncWaveformCanvasSize();
+  draw();
+}
+
+function stopWaveformLoop() {
+  if (!waveformFrameId) {
+    return;
+  }
+
+  window.cancelAnimationFrame(waveformFrameId);
+  waveformFrameId = 0;
+}
+
+function renderWaveformFrame() {
+  if (!waveformCanvas || !waveformContext) {
+    return;
+  }
+
+  if (!waveformCanvas.width || !waveformCanvas.height) {
+    syncWaveformCanvasSize();
+  }
+
+  if (analyserNode && analyserData) {
+    analyserNode.getByteFrequencyData(analyserData);
+    updateAudioMetrics(analyserData);
+    drawWaveform(analyserData);
+    return;
+  }
+
+  decayAudioMetrics();
+  drawWaveform();
+}
+
+function syncWaveformCanvasSize() {
+  if (!waveformCanvas || !waveformContext) {
+    return;
+  }
+
+  const rect = waveformCanvas.getBoundingClientRect();
+  const pixelRatio = Math.max(window.devicePixelRatio || 1, 1);
+  const width = Math.max(1, Math.round(rect.width * pixelRatio));
+  const height = Math.max(1, Math.round(rect.height * pixelRatio));
+
+  if (waveformCanvas.width === width && waveformCanvas.height === height) {
+    return;
+  }
+
+  waveformCanvas.width = width;
+  waveformCanvas.height = height;
+}
+
+function drawWaveform(buffer) {
+  const ctx = waveformContext;
+  const width = waveformCanvas.width;
+  const height = waveformCanvas.height;
+  const barCount = REALTIME_CONFIG.waveformBars;
+  const state = getWaveformState();
+  const centerY = height / 2;
+  const minBarHeight = height * 0.08;
+  const maxBarHeight = height * 0.74;
+  const barWidth = width / (barCount * 1.85);
+  const gap = barWidth * 0.85;
+  const totalWidth = barCount * barWidth + (barCount - 1) * gap;
+  const accent = buildWaveformGradient(ctx, height, state);
+  const idleColor = state === "processing" ? "rgba(245, 158, 11, 0.2)" : "rgba(148, 163, 184, 0.2)";
+
+  if (waveformPeaks.length !== barCount) {
+    waveformPeaks = Array.from({ length: barCount }, () => 0);
+  }
+
+  ctx.clearRect(0, 0, width, height);
+
+  let x = (width - totalWidth) / 2;
+
+  for (let index = 0; index < barCount; index += 1) {
+    const target = buffer ? getWaveformIntensity(buffer, index, barCount) : 0;
+    waveformPeaks[index] = buffer ? waveformPeaks[index] * 0.7 + target * 0.3 : waveformPeaks[index] * 0.86;
+
+    const normalizedHeight = Math.max(waveformPeaks[index], 0.03);
+    const barHeight = minBarHeight + normalizedHeight * maxBarHeight;
+    const y = centerY - barHeight / 2;
+    const isActive = getCurrentAudioLevel() > getDynamicSpeechThreshold() * 0.92 || normalizedHeight > 0.09;
+
+    ctx.fillStyle = isActive ? accent : idleColor;
+    drawRoundedBar(ctx, x, y, barWidth, barHeight, Math.min(barWidth / 2, 12));
+    x += barWidth + gap;
+  }
+}
+
+function buildWaveformGradient(ctx, height, state) {
+  const gradient = ctx.createLinearGradient(0, 0, 0, height);
+
+  if (state === "processing") {
+    gradient.addColorStop(0, "rgba(245, 158, 11, 0.78)");
+    gradient.addColorStop(1, "rgba(251, 191, 36, 0.5)");
+    return gradient;
+  }
+
+  if (state === "speaking") {
+    gradient.addColorStop(0, "rgba(99, 102, 241, 0.72)");
+    gradient.addColorStop(1, "rgba(14, 165, 233, 0.42)");
+    return gradient;
+  }
+
+  if (state === "recording" || getCurrentAudioLevel() > getDynamicSpeechThreshold()) {
+    gradient.addColorStop(0, "rgba(79, 70, 229, 0.95)");
+    gradient.addColorStop(1, "rgba(14, 165, 233, 0.6)");
+    return gradient;
+  }
+
+  gradient.addColorStop(0, "rgba(148, 163, 184, 0.34)");
+  gradient.addColorStop(1, "rgba(203, 213, 225, 0.18)");
+  return gradient;
+}
+
+function getWaveformState() {
+  return voiceStage?.dataset.state || "idle";
+}
+
+function getWaveformIntensity(buffer, index, barCount) {
+  const usableBins = Math.min(buffer.length, 72);
+  const binsPerBar = Math.max(1, Math.floor(usableBins / barCount));
+  const start = index * binsPerBar;
+  const end = index === barCount - 1 ? usableBins : Math.min(usableBins, start + binsPerBar);
+  let sum = 0;
+
+  for (let bin = start; bin < end; bin += 1) {
+    sum += buffer[bin];
+  }
+
+  const average = sum / Math.max(1, end - start);
+  return Math.min(1, (average / 255) * 2.2);
+}
+
+function drawRoundedBar(ctx, x, y, width, height, radius) {
+  const safeRadius = Math.min(radius, width / 2, height / 2);
+
+  ctx.beginPath();
+  ctx.moveTo(x + safeRadius, y);
+  ctx.arcTo(x + width, y, x + width, y + height, safeRadius);
+  ctx.arcTo(x + width, y + height, x, y + height, safeRadius);
+  ctx.arcTo(x, y + height, x, y, safeRadius);
+  ctx.arcTo(x, y, x + width, y, safeRadius);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function createAudioMetrics() {
+  return {
+    level: 0,
+    smoothedLevel: 0,
+    noiseFloor: REALTIME_CONFIG.vadThreshold * 0.45,
+    dynamicThreshold: REALTIME_CONFIG.vadThreshold
+  };
+}
+
+function updateAudioMetrics(buffer) {
+  const rawLevel = sampleFrequencyLevel(buffer);
+  const targetNoiseFloor =
+    !isListening || rawLevel < audioMetrics.dynamicThreshold
+      ? rawLevel
+      : Math.min(audioMetrics.noiseFloor, rawLevel);
+
+  audioMetrics.noiseFloor = audioMetrics.noiseFloor * 0.94 + targetNoiseFloor * 0.06;
+  audioMetrics.level = rawLevel;
+  audioMetrics.smoothedLevel = audioMetrics.smoothedLevel * 0.68 + rawLevel * 0.32;
+  audioMetrics.dynamicThreshold = Math.max(
+    REALTIME_CONFIG.vadThreshold,
+    audioMetrics.noiseFloor + REALTIME_CONFIG.noiseFloorMargin
+  );
+}
+
+function decayAudioMetrics() {
+  audioMetrics.level *= 0.86;
+  audioMetrics.smoothedLevel *= 0.9;
+  audioMetrics.dynamicThreshold = Math.max(
+    REALTIME_CONFIG.vadThreshold,
+    audioMetrics.noiseFloor + REALTIME_CONFIG.noiseFloorMargin
+  );
+}
+
+function sampleFrequencyLevel(buffer) {
+  const usableBins = Math.min(buffer.length, 40);
+  let sum = 0;
+
+  for (let index = 1; index < usableBins; index += 1) {
+    sum += buffer[index] / 255;
+  }
+
+  return sum / Math.max(1, usableBins - 1);
+}
+
+function getCurrentAudioLevel() {
+  return Math.max(audioMetrics.level, audioMetrics.smoothedLevel);
+}
+
+function getDynamicSpeechThreshold() {
+  return audioMetrics.dynamicThreshold || REALTIME_CONFIG.vadThreshold;
 }
 
 function previewAudio(element, blob) {
@@ -1540,7 +1762,7 @@ function previewAudio(element, blob) {
 
   element.dataset.objectUrl = objectUrl;
   element.src = objectUrl;
-  element.classList.remove("hidden");
+  element.load();
 }
 
 function createTurnState(mimeType) {
@@ -1629,6 +1851,10 @@ function scrollConversationToLatest(target) {
 function resetStatus(label, variant) {
   statusBadge.textContent = label;
   statusBadge.className = `status-badge ${variant}`;
+
+  if (voiceStage) {
+    voiceStage.dataset.state = variant || "idle";
+  }
 }
 
 function getLeadLabelVariant(label) {

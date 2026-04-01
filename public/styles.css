@@ -302,6 +302,78 @@ button {
   gap: 10px;
 }
 
+.voice-stage {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px 10px;
+  border-radius: 24px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(248, 250, 252, 0.92)),
+    #ffffff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  transition: border-color 220ms ease, box-shadow 220ms ease, background 220ms ease;
+}
+
+.voice-stage[data-state="recording"] {
+  border-color: rgba(79, 70, 229, 0.22);
+  background:
+    linear-gradient(180deg, rgba(238, 242, 255, 0.98), rgba(255, 255, 255, 0.94)),
+    #ffffff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    0 14px 32px rgba(79, 70, 229, 0.08);
+}
+
+.voice-stage[data-state="speaking"],
+.voice-stage[data-state="connecting"] {
+  border-color: rgba(79, 70, 229, 0.16);
+  background:
+    linear-gradient(180deg, rgba(245, 247, 255, 0.98), rgba(255, 255, 255, 0.94)),
+    #ffffff;
+}
+
+.voice-stage[data-state="processing"] {
+  border-color: rgba(245, 158, 11, 0.16);
+  background:
+    linear-gradient(180deg, rgba(255, 251, 235, 0.96), rgba(255, 255, 255, 0.94)),
+    #ffffff;
+}
+
+.waveform-frame {
+  position: relative;
+  width: 100%;
+  min-height: 92px;
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at top, rgba(79, 70, 229, 0.08), transparent 58%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(248, 250, 252, 0.94));
+  overflow: hidden;
+}
+
+.waveform-frame::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(79, 70, 229, 0.03), transparent 32%, transparent 68%, rgba(14, 165, 233, 0.04));
+  pointer-events: none;
+}
+
+.waveform-canvas {
+  display: block;
+  width: 100%;
+  height: 92px;
+}
+
+.waveform-note {
+  margin: 0;
+  padding: 0 2px;
+  color: var(--subtext);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
 button {
   position: relative;
   border: 0;
@@ -366,12 +438,7 @@ body:has(.status-badge.recording) .primary {
 }
 
 .audio-player {
-  width: 100%;
-  grid-column: 1 / -1;
-  margin-top: 0;
-  border-radius: 16px;
-  opacity: 0.95;
-  accent-color: var(--primary);
+  display: none;
 }
 
 .hidden {
@@ -678,6 +745,10 @@ body:has(.status-badge.recording) .primary {
     grid-column: 1 / -1;
     justify-content: flex-start;
   }
+
+  .voice-stage {
+    order: 4;
+  }
 }
 
 @media (max-width: 760px) {
@@ -711,7 +782,7 @@ body:has(.status-badge.recording) .primary {
 
   .controls-panel .panel-header,
   .actions,
-  .audio-player {
+  .voice-stage {
     grid-column: 1;
   }
 
@@ -727,6 +798,12 @@ body:has(.status-badge.recording) .primary {
   .primary {
     width: 64px;
     height: 64px;
+  }
+
+  .waveform-frame,
+  .waveform-canvas {
+    min-height: 84px;
+    height: 84px;
   }
 
   .secondary {

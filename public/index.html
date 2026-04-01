@@ -52,12 +52,19 @@
         </div>
 
         <div class="actions">
-          <button id="startButton" class="primary">Start Recording</button>
+          <button id="startButton" class="primary">Start Call</button>
           <button id="stopButton" class="secondary" disabled>Stop & Send</button>
         </div>
 
-        <audio id="userPlayback" controls class="audio-player hidden"></audio>
-        <audio id="assistantPlayback" controls class="audio-player hidden"></audio>
+        <div id="voiceStage" class="voice-stage" data-state="idle" aria-hidden="true">
+          <div class="waveform-frame">
+            <canvas id="waveformCanvas" class="waveform-canvas"></canvas>
+          </div>
+          <p class="waveform-note">Real-time voice activity appears here while Lead Sathi listens.</p>
+        </div>
+
+        <audio id="userPlayback" class="audio-player hidden"></audio>
+        <audio id="assistantPlayback" class="audio-player hidden"></audio>
       </section>
 
       <section class="panel transcript-panel">
