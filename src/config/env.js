@@ -1,19 +1,11 @@
 import dotenv from "dotenv";
 
-// ---------------------------------------------------------------------------
-// Environment loading strategy
-// ---------------------------------------------------------------------------
-// On Vercel (and any other cloud platform), environment variables are injected
-// directly into process.env by the platform — no .env file is involved.
-// We only load the local .env file when running in development so that secrets
-// never need to be committed to the repository.
-// ---------------------------------------------------------------------------
-if (process.env.NODE_ENV !== "production") {
-  dotenv.config();
-  console.log("[env] Loaded variables from local .env file (development mode)");
-} else {
-  console.log("[env] Running in production — using platform-injected environment variables");
-}
+// dotenv.config() is safe to call unconditionally:
+// - Locally: loads secrets from your .env file
+// - On Vercel: .env doesn't exist, so this is a silent no-op.
+//   Vercel injects environment variables directly into process.env
+//   before the Node process starts, so they are already available.
+dotenv.config();
 
 export const env = {
   nodeEnv: process.env.NODE_ENV || "development",
@@ -31,20 +23,17 @@ export const env = {
 };
 
 export function assertRequiredEnv() {
-  if (!env.sarvamApiKey) {
+  const isSet = !!env.sarvamApiKey;
+  console.log(`[env] NODE_ENV=${env.nodeEnv} | SARVAM_API_KEY=${isSet ? "SET ✅" : "MISSING ❌"}`);
+
+  if (!isSet) {
     if (env.nodeEnv === "production") {
-      // In production (Vercel), this is a hard failure — the key must be set
-      // in Vercel's Environment Variables dashboard.
       throw new Error(
         "SARVAM_API_KEY is not set. " +
-        "Add it in the Vercel dashboard under Settings → Environment Variables."
+        "Add it in the Vercel dashboard: Settings → Environment Variables → SARVAM_API_KEY"
       );
     } else {
-      // In local development, just warn so the dev server still starts.
-      console.warn(
-        "[env] WARNING: SARVAM_API_KEY is not set. " +
-        "Voice API routes will not work until you add it to your .env file."
-      );
+      console.warn("[env] SARVAM_API_KEY missing — add it to your local .env file.");
     }
   }
 }
