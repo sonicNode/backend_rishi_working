@@ -37,8 +37,9 @@ const DEFAULT_BANT = {
 };
 const REALTIME_CONFIG = {
   recorderTimesliceMs: 120,
-  silenceMs: 680,
-  recognitionSilenceMs: 520,
+  silenceMs: 620,
+  recognitionSilenceMs: 300,
+  hardSilenceMs: 1200,
   minSpeechMs: 260,
   vadThreshold: 0.045,
   bargeInThreshold: 0.075,
@@ -693,7 +694,8 @@ function startVoiceActivityMonitor() {
 
     const level = getSpeechActivityLevel();
     const threshold = getDynamicSpeechThreshold();
-    const silenceThreshold = Math.max(audioMetrics.noiseFloor + 0.008, threshold * 0.78);
+    const silenceThreshold = Math.max(audioMetrics.noiseFloor + 0.012, threshold * 1.04);
+    const hardSilenceThreshold = Math.max(audioMetrics.noiseFloor + 0.02, threshold * 1.28);
     const now = Date.now();
 
     if (level > threshold) {
@@ -716,17 +718,25 @@ function startVoiceActivityMonitor() {
       activeTurn.lastSpeechAt = 0;
     }
 
+    const lastActivityAt = Math.max(activeTurn.lastSpeechAt || 0, activeTurn.lastTranscriptAt || 0);
+    const silenceElapsed = lastActivityAt ? now - lastActivityAt : 0;
     const voiceWentQuiet =
       activeTurn.hasSpoken &&
-      activeTurn.lastSpeechAt &&
-      now - activeTurn.lastSpeechAt >= REALTIME_CONFIG.silenceMs &&
+      lastActivityAt &&
+      silenceElapsed >= REALTIME_CONFIG.silenceMs &&
       level <= silenceThreshold;
 
     const transcriptSettled =
       !activeTurn.lastTranscriptAt ||
       now - activeTurn.lastTranscriptAt >= REALTIME_CONFIG.recognitionSilenceMs;
 
-    if (voiceWentQuiet && transcriptSettled) {
+    const hardSilenceReached =
+      activeTurn.hasSpoken &&
+      lastActivityAt &&
+      silenceElapsed >= REALTIME_CONFIG.hardSilenceMs &&
+      level <= hardSilenceThreshold;
+
+    if ((voiceWentQuiet && transcriptSettled) || hardSilenceReached) {
       void finishListeningTurn("silence");
       return;
     }
