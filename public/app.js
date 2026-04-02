@@ -1097,7 +1097,7 @@ function extractDeterministicBant(input) {
   );
   const needValue = extractNeedHint(text);
   const timelineValue = extractTimelineHint(text);
-  const authorityValue = extractAuthorityHint(text);
+  const authorityValue = extractAuthorityHint(text, getDisplayedNextQuestion());
 
   if (budgetMatch?.[1]) {
     nextBant.budget = normalizeBantText(budgetMatch[1])
@@ -1166,7 +1166,7 @@ function extractTimelineHint(text) {
   return null;
 }
 
-function extractAuthorityHint(text) {
+function extractAuthorityHint(text, questionText = "") {
   if (
     /\b(i am (?:the )?decision maker|i'm (?:the )?decision maker|i decide|i can decide|i am owner|i'm owner|i am the owner|i'm the owner|i am the founder|i'm the founder|i am the director|i'm the director|i am handling this|i'm handling this|this is my call|i will take the call|i'll take the call|main decide karunga|main decide karungi|main final call lunga|main final call lungi|hum decide karenge|my company)\b/i.test(
       text
@@ -1183,7 +1183,38 @@ function extractAuthorityHint(text) {
     return "needs-approval";
   }
 
+  if (isAuthorityQuestionText(questionText)) {
+    if (isAffirmativeAuthorityResponse(text)) {
+      return "decision-maker";
+    }
+
+    if (isNegativeAuthorityResponse(text)) {
+      return "needs-approval";
+    }
+  }
+
   return null;
+}
+
+function getDisplayedNextQuestion() {
+  const rawText = leadNextQuestion?.textContent || "";
+  return rawText.replace(/^Next question:\s*/i, "").trim();
+}
+
+function isAuthorityQuestionText(questionText) {
+  return /\b(final call|decision|decide|approve|approval|taking the call)\b/i.test(questionText || "");
+}
+
+function isAffirmativeAuthorityResponse(text) {
+  return /^(?:yes|yeah|yep|yup|sure|of course|correct|exactly|right|ji haan|haan ji|haan|han|yes i am|yes i will|i will|i can|i do)\b/i.test(
+    text
+  );
+}
+
+function isNegativeAuthorityResponse(text) {
+  return /^(?:no|nope|nah|nahi|nahin|not really|not me|someone else|approval needed|need approval|i need approval|i have to ask|i need to ask|i have to check|i need to check)\b/i.test(
+    text
+  );
 }
 
 function mergeBantState(currentBant, incomingBant) {

@@ -51,7 +51,9 @@ export async function processVoiceTurn({
   const askedQuestionCount = countAskedQuestions(session.transcript);
   const transcriptText = transcription.transcript || normalizedFallbackTranscript || "";
   const detectedLanguageCode = transcription.language_code || requestedLanguageCode || env.defaultLanguageCode;
-  const extractedDetails = extractLeadDetails(transcriptText, session.leadProfile);
+  const extractedDetails = extractLeadDetails(transcriptText, session.leadProfile, {
+    nextQuestion: session.qualification?.nextQuestion
+  });
   const localTurnState = mergeAndQualify(session.leadProfile, extractedDetails);
 
   let leadProfile = localTurnState.leadProfile;

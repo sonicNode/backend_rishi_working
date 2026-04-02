@@ -58,7 +58,7 @@ Preferred response language code: ${languageCode}
 `.trim();
 }
 
-export function extractLeadDetails(text, existingLeadProfile = {}) {
+export function extractLeadDetails(text, existingLeadProfile = {}, conversationContext = {}) {
   const details = defaultLeadProfile();
   const normalized = normalizeUserText(text);
 
@@ -73,7 +73,7 @@ export function extractLeadDetails(text, existingLeadProfile = {}) {
   details.role = detectRole(normalized);
   details.budget = detectBudget(normalized);
   details.timeline = detectTimeline(normalized);
-  details.authority = detectAuthority(normalized, details.role || existingLeadProfile.role);
+  details.authority = detectAuthority(normalized, details.role || existingLeadProfile.role, conversationContext.nextQuestion);
   details.useCase = detectNeed(normalized, existingLeadProfile.useCase);
 
   if (!details.useCase && looksLikeUseCase(normalized) && !looksLikeIntroduction(normalized)) {
@@ -439,7 +439,7 @@ function detectTimeline(text) {
   return null;
 }
 
-function detectAuthority(text, role) {
+function detectAuthority(text, role, nextQuestion) {
   if (
     /(?:i am (?:the )?decision maker|i'm (?:the )?decision maker|i decide|i can decide|i'll decide|i make the decision|i take the final call|final decision is mine|i approve|i sign off|i am the owner|i'm the owner|i am the founder|i'm the founder|i am the director|i'm the director|i am handling this|i'm handling this|this is my call|i will take the call|i'll take the call|main decide karunga|main decide karungi|main final call lunga|main final call lungi|hum decide karenge)/i.test(
       text
@@ -457,7 +457,33 @@ function detectAuthority(text, role) {
     return "needs-approval";
   }
 
+  if (isAuthorityQuestion(nextQuestion)) {
+    if (isAffirmativeAuthorityReply(text)) {
+      return "decision-maker";
+    }
+
+    if (isNegativeAuthorityReply(text)) {
+      return "needs-approval";
+    }
+  }
+
   return null;
+}
+
+function isAuthorityQuestion(question) {
+  return /\b(final call|decision|decide|approve|approval|taking the call)\b/i.test(question || "");
+}
+
+function isAffirmativeAuthorityReply(text) {
+  return /^(?:yes|yeah|yep|yup|sure|of course|correct|exactly|right|ji haan|haan ji|haan|han|yes i am|yes i will|i will|i can|i do)\b/i.test(
+    text
+  );
+}
+
+function isNegativeAuthorityReply(text) {
+  return /^(?:no|nope|nah|nahi|nahin|not really|not me|someone else|approval needed|need approval|i need approval|i have to ask|i need to ask|i have to check|i need to check)\b/i.test(
+    text
+  );
 }
 
 function detectNeed(text, existingNeed) {
