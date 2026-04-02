@@ -1097,7 +1097,7 @@ function extractDeterministicBant(input) {
   );
   const needValue = extractNeedHint(text);
   const timelineValue = extractTimelineHint(text);
-  const authorityValue = extractAuthorityHint(text, getDisplayedNextQuestion());
+  const authorityValue = extractAuthorityHint(text, getAuthorityPromptContext());
 
   if (budgetMatch?.[1]) {
     nextBant.budget = normalizeBantText(budgetMatch[1])
@@ -1199,6 +1199,17 @@ function extractAuthorityHint(text, questionText = "") {
 function getDisplayedNextQuestion() {
   const rawText = leadNextQuestion?.textContent || "";
   return rawText.replace(/^Next question:\s*/i, "").trim();
+}
+
+function getAuthorityPromptContext() {
+  const displayedQuestion = getDisplayedNextQuestion();
+
+  if (isAuthorityQuestionText(displayedQuestion)) {
+    return displayedQuestion;
+  }
+
+  const nextField = BANT_FIELDS.find(({ key }) => !bantState[key])?.key;
+  return nextField === "authority" ? "Will you be the one taking the final call on this?" : displayedQuestion;
 }
 
 function isAuthorityQuestionText(questionText) {
