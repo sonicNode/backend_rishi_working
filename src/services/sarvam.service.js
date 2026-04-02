@@ -74,13 +74,15 @@ export async function generateLeadReply({ messages }) {
 }
 
 export async function synthesizeSpeech({ text, languageCode, speaker }) {
+  const normalizedText = normalizeTextForSpeech(text);
+
   const response = await fetch(`${env.sarvamBaseUrl}/text-to-speech`, {
     method: "POST",
     headers: getHeaders({
       "Content-Type": "application/json"
     }),
     body: JSON.stringify({
-      text,
+      text: normalizedText,
       target_language_code: languageCode || env.defaultLanguageCode,
       speaker: (speaker || env.defaultSpeaker).toLowerCase(),
       model: env.ttsModel,
@@ -100,4 +102,18 @@ export async function synthesizeSpeech({ text, languageCode, speaker }) {
     raw: payload,
     audioBase64
   };
+}
+
+function normalizeTextForSpeech(text) {
+  if (!text) {
+    return "";
+  }
+
+  return text
+    .replace(/!{2,}/g, "!")
+    .replace(/!+(?=\s|$)/g, ".")
+    .replace(/!+(?=[,;:])/g, "")
+    .replace(/!+(?=\?)/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }

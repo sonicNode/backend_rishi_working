@@ -25,7 +25,18 @@ function defaultSession(sessionId) {
     qualification: {
       score: 0,
       status: "discovery",
-      missingFields: ["name", "company", "useCase", "budget", "timeline"]
+      missingFields: ["name", "company", "useCase", "budget", "timeline"],
+      bant: {
+        budget: null,
+        authority: null,
+        need: null,
+        timeline: null
+      },
+      scoreOutOf10: 0,
+      labelKey: "cold",
+      label: "Cold \u2744\uFE0F",
+      nextQuestion: "What are you looking to solve right now?",
+      summary: "Share the requirement and Lead Sathi will qualify the lead live."
     }
   };
 }

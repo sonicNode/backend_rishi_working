@@ -3,61 +3,81 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Sarvam Voice Assistant Demo</title>
+    <title>Lead Sarthi</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <main class="app-shell">
       <section class="hero">
-        <p class="eyebrow">Lead Qualifying Voice Assistant</p>
-        <h1>Talk to your backend with a live voice roundtrip demo</h1>
+        <div class="hero-top">
+          <div class="brand-lockup">
+            <span class="brand-mark" aria-hidden="true">LS</span>
+            <div class="brand-copy">
+              <p class="eyebrow">Lead Sarthi</p>
+              <p class="brand-caption">Voice-first qualification desk</p>
+            </div>
+          </div>
+          <span class="hero-pill">Live voice &middot; instant scoring</span>
+        </div>
+        <h1>LEAD SARTHI</h1>
         <p class="hero-copy">
-          This browser demo records your microphone, sends it to the Node.js backend,
-          and plays back the Sarvam AI voice reply.
+          A colorful minimal workspace for live voice qualification, smooth lead scoring, and
+          clear next-step guidance.
         </p>
       </section>
 
       <section class="panel controls-panel">
-        <div class="panel-header">
-          <h2>Voice Controls</h2>
-          <span id="statusBadge" class="status-badge idle">Idle</span>
-        </div>
-
-        <label class="field">
-          <span>Session ID</span>
-          <input id="sessionId" type="text" placeholder="lead-demo-session" />
-        </label>
-
-        <div class="grid">
-          <label class="field">
-            <span>Language</span>
-            <select id="languageCode">
-              <option value="en-IN">English (India)</option>
-              <option value="hi-IN">Hindi</option>
-              <option value="bn-IN">Bengali</option>
-              <option value="ta-IN">Tamil</option>
-              <option value="te-IN">Telugu</option>
-              <option value="kn-IN">Kannada</option>
-              <option value="ml-IN">Malayalam</option>
-              <option value="mr-IN">Marathi</option>
-              <option value="gu-IN">Gujarati</option>
-              <option value="pa-IN">Punjabi</option>
-            </select>
-          </label>
+        <div class="config-store hidden" aria-hidden="true">
+          <div class="panel-header">
+            <h2>Talk to Lead Sarthi</h2>
+            <span id="statusBadge" class="status-badge idle">Idle</span>
+          </div>
 
           <label class="field">
-            <span>Speaker</span>
-            <input id="speaker" type="text" value="shubh" placeholder="shubh" />
+            <span>Session ID</span>
+            <input id="sessionId" type="text" placeholder="lead-demo-session" />
           </label>
+
+          <div class="grid">
+            <label class="field">
+              <span>Language</span>
+              <select id="languageCode">
+                <option value="en-IN">English (India)</option>
+                <option value="hi-IN">Hindi</option>
+                <option value="bn-IN">Bengali</option>
+                <option value="ta-IN">Tamil</option>
+                <option value="te-IN">Telugu</option>
+                <option value="kn-IN">Kannada</option>
+                <option value="ml-IN">Malayalam</option>
+                <option value="mr-IN">Marathi</option>
+                <option value="gu-IN">Gujarati</option>
+                <option value="pa-IN">Punjabi</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>Speaker</span>
+              <input id="speaker" type="text" value="shubh" placeholder="shubh" />
+            </label>
+          </div>
+
+          <button id="stopButton" class="secondary" disabled>Stop &amp; Send</button>
         </div>
 
         <div class="actions">
-          <button id="startButton" class="primary">Start Recording</button>
-          <button id="stopButton" class="secondary" disabled>Stop & Send</button>
+          <div class="mic-container">
+            <button id="startButton" class="primary">Start Call</button>
+            <span id="statusBadgeVisible" class="status-badge visible-status idle">Idle</span>
+            <div id="voiceStage" class="voice-stage" data-state="idle" aria-hidden="true">
+              <div class="waveform-frame">
+                <canvas id="waveformCanvas" class="waveform-canvas"></canvas>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <audio id="userPlayback" controls class="audio-player hidden"></audio>
-        <audio id="assistantPlayback" controls class="audio-player hidden"></audio>
+        <audio id="userPlayback" class="audio-player hidden"></audio>
+        <audio id="assistantPlayback" class="audio-player hidden"></audio>
       </section>
 
       <section class="panel transcript-panel">
@@ -69,8 +89,22 @@
 
       <section class="panel insights-panel">
         <div class="panel-header">
-          <h2>Lead Qualification Snapshot</h2>
+          <h2>Live Lead Score</h2>
         </div>
+        <div class="score-card">
+          <p class="score-kicker">Lead score</p>
+          <div class="score-row">
+            <strong id="leadScoreValue" class="score-value">0/10</strong>
+            <span id="leadLabelBadge" class="lead-label cold">Cold &#10052;&#65039;</span>
+          </div>
+          <p id="leadSummary" class="score-summary">
+            Share the requirement and Lead Sathi will qualify the lead live.
+          </p>
+          <p id="leadNextQuestion" class="next-question">
+            Next question: What are you looking to solve right now?
+          </p>
+        </div>
+        <div id="bantBoard" class="bant-board"></div>
         <pre id="leadProfile" class="json-view">{}</pre>
         <pre id="qualification" class="json-view">{}</pre>
       </section>
@@ -80,6 +114,7 @@
       <article class="message-card">
         <span class="message-role"></span>
         <p class="message-text"></p>
+        <p class="message-thinking hidden"></p>
       </article>
     </template>
 
